@@ -1,0 +1,24 @@
+[Unit]
+Description=Parts Yard - address storage for spare parts (Node.js)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=partsyard
+Group=partsyard
+EnvironmentFile=/etc/default/parts-yard
+Environment=NODE_ENV=production
+WorkingDirectory=/opt/parts-yard
+ExecStart=/usr/bin/env node /opt/parts-yard/src/server.js
+Restart=on-failure
+RestartSec=3
+
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+ReadWritePaths=/var/lib/parts-yard
+
+[Install]
+WantedBy=multi-user.target
