@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-<title>Вход · Адресный склад запчастей</title>
+<title>Вход · WarehouseOS</title>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Onest:wght@400;500;600;700&family=JetBrains+Mono:wght@400;600&display=swap">
 <style>
 :root{--bg:#E9ECEC;--surface:#F7F8F8;--ink:#1A2227;--muted:#5A666D;--line:#D0D6D8;--accent:#F2B705;--accent-ink:#1A2227;--bad:#C2412D;--mark:#C99A06;
@@ -14,7 +14,8 @@ html,body{height:100%}
 body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.45 var(--font-ui);display:grid;place-items:center;padding-inline:16px}
 form{width:100%;max-width:360px;background:var(--surface);border:1px solid var(--line);border-radius:8px;padding:24px;display:flex;flex-direction:column;gap:14px;
   background-image:repeating-linear-gradient(135deg,var(--accent) 0 10px,var(--accent-ink) 10px 20px);background-size:100% 6px;background-repeat:no-repeat}
-h1{margin:6px 0 0;font-size:20px}
+h1{margin:2px 0 0;font-size:20px}
+.os{font:600 11px var(--font-mono);letter-spacing:.14em;color:var(--mark);text-transform:uppercase}
 p{margin:0;color:var(--muted);font-size:13px}
 label{display:flex;flex-direction:column;gap:5px;font-size:13px;color:var(--muted)}
 input{padding:10px 12px;border:1px solid var(--line);border-radius:6px;background:var(--bg);color:var(--ink);font:inherit}
@@ -26,13 +27,17 @@ button:disabled{opacity:.5}
 </head>
 <body>
 <form id="f" autocomplete="on">
-  <div><h1>Адресный склад запчастей</h1><p>Центральный склад сети</p></div>
+  <div><span class="os">WarehouseOS</span><h1 id="wn">Адресный склад запчастей</h1><p id="ws">Центральный склад сети</p></div>
   <label for="u">Логин<input id="u" name="username" autocomplete="username" required autofocus></label>
   <label for="p">Пароль<input id="p" name="password" type="password" autocomplete="current-password" required></label>
   <div id="err" role="alert"></div>
   <button id="b" type="submit">Войти</button>
 </form>
 <script>
+fetch('/api/public').then((r) => r.json()).then((d) => {
+  document.getElementById('wn').textContent = d.name; document.getElementById('ws').textContent = d.subtitle || '';
+  document.title = 'Вход · ' + d.name;
+}).catch(() => {});
 document.getElementById('f').addEventListener('submit',async e=>{
   e.preventDefault();
   const b=document.getElementById('b'),err=document.getElementById('err');

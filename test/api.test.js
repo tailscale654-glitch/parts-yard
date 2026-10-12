@@ -4,14 +4,14 @@ const assert = require('node:assert');
 const os = require('os');
 const fs = require('fs');
 const path = require('path');
-const { loadLayout } = require('../src/layout');
-const { openDb } = require('../src/db');
+const { resolveLayout } = require('../src/layout');
+const { openDb, syncCells } = require('../src/db');
 const { createApp } = require('../src/app');
 const { addUser } = require('../src/auth');
 const { seedDemo } = require('../src/demo');
 
-let server, base, db, cookie, dir;
-const L = loadLayout(path.join(__dirname, '..', 'layout.json'));
+let server, base, db, cookie, dir, L;
+const LAYOUT_FILE = path.join(__dirname, '..', 'layout.json');
 
 async function call(method, url, body, headers = {}) {
   const r = await fetch(base + url, {
@@ -27,11 +27,13 @@ async function call(method, url, body, headers = {}) {
 
 before(async () => {
   dir = fs.mkdtempSync(path.join(os.tmpdir(), 'pyard-'));
-  db = openDb(path.join(dir, 'w.db'), L.meta);
+  db = openDb(path.join(dir, 'w.db'));
+  L = resolveLayout(db, LAYOUT_FILE);
+  syncCells(db, L);
   seedDemo(db, L);
   addUser(db, 'ivan', 'secret1', 'operator');
   addUser(db, 'admin', 'secret2', 'admin');
-  const app = createApp({ db, L, cfg: { ROOT: path.join(__dirname, '..'), demo: true, cookieName: 'pyard.sid', sessionDays: 1, secureCookie: false } });
+  const app = createApp({ db, L, cfg: { ROOT: path.join(__dirname, '..'), demo: true, layoutPath: LAYOUT_FILE, dbPath: path.join(dir, 'w.db'), cookieName: 'pyard.sid', sessionDays: 1, secureCookie: false } });
   await new Promise((res) => { server = app.listen(0, '127.0.0.1', res); });
   base = `http://127.0.0.1:${server.address().port}`;
 });
@@ -54,11 +56,12 @@ test('неверный пароль и успешный вход', async () => {
 });
 
 test('размещение по плану закрывает строку поставки', async () => {
-  const plan = await call('GET', '/api/plan/putaway/1');
+  const rid = db.prepare("SELECT id FROM receipt WHERE done = 0 AND art = 'FO-15208'").pluck().get();
+  const plan = await call('GET', `/api/plan/putaway/${rid}`);
   assert.ok(plan.data.plan.length > 0);
-  const r = await call('POST', '/api/receipts/1/putaway');
+  const r = await call('POST', `/api/receipts/${rid}/putaway`);
   assert.strictEqual(r.status, 200);
-  const rec = db.prepare('SELECT * FROM receipt WHERE id = 1').get();
+  const rec = db.prepare('SELECT * FROM receipt WHERE id = ?').get(rid);
   assert.strictEqual(rec.done, 1);
   assert.strictEqual(rec.placed, rec.qty);
 });
@@ -101,12 +104,13 @@ test('размещение в чужую зону и сверх вместимо
 });
 
 test('сборка заказа целиком и учёт взятого', async () => {
-  const r = await call('POST', '/api/orders/1/pick?state=1');
+  const oid = db.prepare('SELECT id FROM orders WHERE done = 0 ORDER BY id LIMIT 1').pluck().get();
+  const r = await call('POST', `/api/orders/${oid}/pick?state=1`);
   assert.strictEqual(r.status, 200);
   assert.ok(r.data.state);
-  const o = r.data.state.orders.find((x) => x.id === 1);
+  const o = r.data.state.orders.find((x) => x.id === oid);
   assert.strictEqual(o.done, 1);
-  const again = await call('POST', '/api/orders/1/pick');
+  const again = await call('POST', `/api/orders/${oid}/pick`);
   assert.strictEqual(again.data.code, 'ORDER_DONE');
 });
 

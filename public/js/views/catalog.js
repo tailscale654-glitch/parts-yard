@@ -1,0 +1,88 @@
+// Каталог артикулов: остатки, минимумы, редактирование и загрузка из Excel.
+import { api, esc, can, icon, toast, fail, modal, confirmBox, table, pageHead, bus, debounce, statusPill, parseCsv, pickFile, h } from '../core.js';
+
+export async function mount(root) {
+  let items = [], zones = [], q = '', zone = '', onlyLow = false;
+  root.innerHTML = `${pageHead('Каталог', 'Артикулы, их зоны хранения, вместимость одной ячейки и минимальный остаток для пополнения.',
+    `${can('reports.view') ? `<a class="btn" href="/api/reports/stock_sku?format=csv">${icon('download')}Скачать в Excel</a>` : ''}
+     ${can('catalog.manage') ? `<button class="btn" id="imp">${icon('upload')}Загрузить из Excel</button><button class="btn pri" id="add">${icon('plus')}Артикул</button>` : ''}`)}
+    <div class="filters">
+      <label class="field" style="min-width:240px"><span>Поиск</span><input class="in" id="q" type="search" placeholder="Артикул или название"></label>
+      <label class="field"><span>Зона</span><select class="in" id="zone"><option value="">Все зоны</option></select></label>
+      <label class="check" style="min-height:36px"><input type="checkbox" id="low">Только ниже минимума</label>
+    </div>
+    <div class="card"><div class="tw" id="tbl"></div></div>`;
+
+  const status = (r) => (r.qty === 0 ? 'нет на складе' : r.min_qty && r.qty < r.min_qty ? 'ниже минимума' : 'в норме');
+  function draw() {
+    const list = items.filter((r) => (!q || r.art.toLowerCase().includes(q) || r.name.toLowerCase().includes(q)) && (!zone || r.zone === zone) && (!onlyLow || status(r) !== 'в норме'));
+    table(root.querySelector('#tbl'), {
+      columns: [{ key: 'art', label: 'Артикул', mono: true }, { key: 'name', label: 'Наименование' }, { key: 'zone', label: 'Зона' },
+        { key: 'per', label: 'В ячейку', align: 'r' }, { key: 'min_qty', label: 'Минимум', align: 'r' }, { key: 'qty', label: 'На складе', align: 'r' },
+        { key: 'cells', label: 'Ячеек', align: 'r' }, { key: 'status', label: 'Статус', type: 'status' }],
+      rows: list.map((r) => ({ ...r, status: status(r) })),
+      totals: { qty: list.reduce((n, r) => n + r.qty, 0), cells: list.reduce((n, r) => n + r.cells, 0) },
+      empty: 'Ничего не найдено',
+      onRow: (r) => edit(r),
+    });
+  }
+  function edit(r) {
+    const isNew = !r, m = can('catalog.manage');
+    const body = h(`<div style="display:flex;flex-direction:column;gap:12px"><div class="grid2">
+      <label class="field"><span>Артикул</span><input class="in mono" id="cart" maxlength="40" value="${esc(r ? r.art : '')}" ${isNew ? '' : 'readonly'}></label>
+      <label class="field"><span>Зона хранения</span><select class="in" id="czone" ${m ? '' : 'disabled'}>${zones.map((z) => `<option value="${z.id}" ${r && r.zone === z.id ? 'selected' : ''}>${esc(z.id)} · ${esc(z.sub || z.title)}</option>`).join('')}</select></label>
+      </div>
+      <label class="field"><span>Наименование</span><input class="in" id="cname" maxlength="120" value="${esc(r ? r.name : '')}" ${m ? '' : 'readonly'}></label>
+      <div class="grid2">
+        <label class="field"><span>Вместимость ячейки, шт</span><input class="in" id="cper" type="number" min="1" value="${r ? r.per : ''}" ${m ? '' : 'readonly'}><span class="hint">Сколько штук помещается в одну ячейку</span></label>
+        <label class="field"><span>Минимальный остаток, шт</span><input class="in" id="cmin" type="number" min="0" value="${r ? r.min_qty : 0}" ${m ? '' : 'readonly'}><span class="hint">Ниже — попадёт в «Требует внимания». 0 — не следить</span></label>
+      </div>
+      ${r ? `<div class="infobox">На складе <b>${r.qty}</b> шт в ${r.cells} ячейках. <a href="#/map?sku=${encodeURIComponent(r.art)}">Показать на карте</a></div>` : ''}</div>`);
+    const acts = [];
+    if (r && m && !r.cells) acts.push({ label: 'Удалить', kind: 'danger', left: true, onClick: async () => {
+      if (!(await confirmBox(`Удалить артикул ${r.art}?`, 'Удалить', true))) return true;
+      await api('/api/catalog/' + encodeURIComponent(r.art), { method: 'DELETE' }); toast('Артикул удалён'); load();
+    } });
+    acts.push({ label: m ? 'Отмена' : 'Закрыть' });
+    if (m) acts.push({ label: 'Сохранить', kind: 'pri', onClick: async ({ el }) => {
+      await api('/api/catalog', { method: 'POST', body: { isNew, art: el.querySelector('#cart').value.trim(), name: el.querySelector('#cname').value, zone: el.querySelector('#czone').value,
+        per: Number(el.querySelector('#cper').value), min_qty: Number(el.querySelector('#cmin').value || 0) } });
+      toast('Сохранено'); bus.dispatchEvent(new Event('changed')); load();
+    } });
+    const md = modal({ title: isNew ? 'Новый артикул' : r.art, sub: r ? esc(r.name) : '', body, actions: acts });
+    body.querySelectorAll('a').forEach((a) => a.addEventListener('click', () => md.close()));
+  }
+  async function importDialog() {
+    const f = await pickFile();
+    if (!f) return;
+    const rows = parseCsv(f.text);
+    if (rows.length && !/^\d+$/.test(rows[0][3] || '')) rows.shift();
+    const parsed = rows.map((r) => ({ art: r[0], name: r[1], zone: (r[2] || '').toUpperCase(), per: r[3], min_qty: r[4] || 0 }));
+    const known = new Set(items.map((x) => x.art));
+    const body = h(`<div style="display:flex;flex-direction:column;gap:10px"><p class="note">Файл <b>${esc(f.name)}</b>: строк ${parsed.length}, новых ${parsed.filter((x) => !known.has(x.art)).length}, обновится ${parsed.filter((x) => known.has(x.art)).length}.
+      Колонки: артикул; наименование; зона; вместимость ячейки; минимум (необязательно).</p><div class="tw" style="max-height:340px"></div></div>`);
+    table(body.querySelector('.tw'), {
+      columns: [{ key: 'art', label: 'Артикул', mono: true }, { key: 'name', label: 'Наименование' }, { key: 'zone', label: 'Зона' }, { key: 'per', label: 'В ячейку', align: 'r' }, { key: 'min_qty', label: 'Мин.', align: 'r' }, { key: 'st', label: '' }],
+      rows: parsed.slice(0, 300).map((x) => ({ ...x, st: known.has(x.art) ? 'обновится' : 'новый' })),
+    });
+    modal({ title: 'Загрузка каталога', wide: true, body, actions: [{ label: 'Отмена' }, { label: `Загрузить ${parsed.length}`, kind: 'pri', onClick: async () => {
+      const r = await api('/api/catalog/import', { method: 'POST', body: { rows: parsed } });
+      toast(`Добавлено ${r.added}, обновлено ${r.updated}`); bus.dispatchEvent(new Event('changed')); load();
+    } }] });
+  }
+  async function load() {
+    try {
+      const r = await api('/api/catalog');
+      items = r.items; zones = r.zones;
+      const sel = root.querySelector('#zone');
+      if (sel.options.length === 1) sel.insertAdjacentHTML('beforeend', zones.map((z) => `<option value="${z.id}">${esc(z.id)} · ${esc(z.sub || z.title)}</option>`).join(''));
+      draw();
+    } catch (e) { fail(e); }
+  }
+  root.querySelector('#q').oninput = debounce((e) => { q = e.target.value.trim().toLowerCase(); draw(); }, 150);
+  root.querySelector('#zone').onchange = (e) => { zone = e.target.value; draw(); };
+  root.querySelector('#low').onchange = (e) => { onlyLow = e.target.checked; draw(); };
+  root.querySelector('#add')?.addEventListener('click', () => edit(null));
+  root.querySelector('#imp')?.addEventListener('click', () => importDialog().catch(fail));
+  await load();
+}

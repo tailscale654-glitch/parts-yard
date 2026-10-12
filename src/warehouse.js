@@ -1,7 +1,7 @@
 'use strict';
 // Логика склада: подбор адресов, маршруты, операции с остатками.
 // Все изменения идут через функции этого модуля и выполняются в транзакции.
-const { now } = require('./db');
+const { now, kindOf } = require('./db');
 const { makeGeometry } = require('./layout');
 
 class WmsError extends Error {
@@ -28,12 +28,12 @@ function createWarehouse(db, L, opts = {}) {
     cell: db.prepare('SELECT * FROM cell WHERE addr = ?'),
     setCell: db.prepare('UPDATE cell SET sku = ?, qty = ? WHERE addr = ?'),
     setBlocked: db.prepare('UPDATE cell SET blocked = ? WHERE addr = ?'),
-    log: db.prepare('INSERT INTO oplog(ts, op, addr, art, qty, user, ref) VALUES (?,?,?,?,?,?,?)'),
+    log: db.prepare('INSERT INTO oplog(ts, op, kind, addr, art, qty, user, ref) VALUES (?,?,?,?,?,?,?,?)'),
     receipt: db.prepare('SELECT * FROM receipt WHERE id = ?'),
     order: db.prepare('SELECT * FROM orders WHERE id = ?'),
     lines: db.prepare('SELECT * FROM order_line WHERE order_id = ? ORDER BY id'),
   };
-  const log = (op, addr, art, qty, user, ref) => q.log.run(now(), op, addr || null, art || null, qty ?? null, user || null, ref || null);
+  const log = (op, addr, art, qty, user, ref) => q.log.run(now(), op, kindOf(op), addr || null, art || null, qty ?? null, user || null, ref || null);
   const rev = () => q.rev.get();
   const bump = () => q.bump.run();
 

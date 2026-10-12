@@ -2,21 +2,22 @@
 'use strict';
 // Командная строка: база, пользователи, загрузка и выгрузка CSV.
 const fs = require('fs');
-const crypto = require('crypto');
 const cfg = require('./src/config');
-const { loadLayout } = require('./src/layout');
-const { openDb, now } = require('./src/db');
-const { addUser } = require('./src/auth');
+const { resolveLayout } = require('./src/layout');
+const { openDb, syncCells, now, audit } = require('./src/db');
+const { addUser, genPassword } = require('./src/auth');
 const { seedDemo } = require('./src/demo');
 
-const HELP = `Адресный склад запчастей — команды
+const HELP = `WarehouseOS — адресный склад запчастей, команды
 
   init [--demo]                         создать базу и ячейки по layout.json (--demo стирает данные!)
-  user-add <логин> [--role admin|operator] [--password <пароль>]
+  user-add <логин> [--role <роль>] [--password <пароль>] [--name "Фамилия Имя"]
                                         создать пользователя или сменить ему пароль/роль
+                                        роли: admin, manager, storekeeper, viewer и свои из админки
   user-del <логин>                      отключить пользователя и завершить его сессии
   user-list                             список пользователей
-  import-skus <файл.csv>                каталог: артикул;наименование;зона;вместимость_ячейки
+  role-list                             список ролей
+  import-skus <файл.csv>                каталог: артикул;наименование;зона;вместимость_ячейки[;минимум]
   import-receipt <файл.csv> --doc <№> [--gate <ворота>]
                                         поставка: артикул;количество
   import-order <файл.csv> --number <№> --dealer <дилер> [--due 15:00]
@@ -40,7 +41,7 @@ function parseArgs(argv) {
   return { pos, opt };
 }
 
-function readRows(file, ncols) {
+function readRows(file, ncols, maxCols = ncols) {
   if (!file) die('Укажите файл');
   let text;
   try { text = fs.readFileSync(file, 'utf8').replace(/^﻿/, ''); } catch (e) { die(`Не удалось прочитать ${file}: ${e.message}`); }
@@ -54,7 +55,7 @@ function readRows(file, ncols) {
     const n = idx + 1;
     if (row.length < ncols) die(`Строка ${n}: ожидается колонок ${ncols}, получено ${row.length}`);
     if (n === 1 && !/^-?\d+$/.test(row[ncols - 1])) return; // заголовок
-    rows.push([n, row.slice(0, ncols)]);
+    rows.push([n, row.slice(0, maxCols)]);
   });
   return rows;
 }
@@ -89,8 +90,9 @@ async function main() {
   const [cmd, ...rest] = process.argv.slice(2);
   const { pos, opt } = parseArgs(rest);
   if (!cmd || cmd === '-h' || cmd === '--help' || cmd === 'help') { console.log(HELP); return; }
-  const L = loadLayout(cfg.layoutPath);
-  const db = openDb(cfg.dbPath, L.meta);
+  const db = openDb(cfg.dbPath);
+  const L = resolveLayout(db, cfg.layoutPath);
+  syncCells(db, L);
 
   switch (cmd) {
     case 'init':
@@ -101,14 +103,15 @@ async function main() {
     case 'user-add': {
       const name = pos[0];
       if (!name) die('Укажите логин: user-add <логин>');
-      const role = opt.role || 'operator';
-      if (!['admin', 'operator'].includes(role)) die('Роль: admin или operator');
+      const role = opt.role && opt.role !== true ? String(opt.role) : 'storekeeper';
       const generated = !opt.password || opt.password === true;
-      const pw = generated ? crypto.randomBytes(9).toString('base64url') : String(opt.password);
-      try { addUser(db, name, pw, role); } catch (e) { die(e.message); }
+      const pw = generated ? genPassword() : String(opt.password);
+      try { addUser(db, name, pw, role, opt.name && opt.name !== true ? String(opt.name) : null); } catch (e) { die(e.message); }
+      audit(db, 'консоль', 'Пользователь сохранён', { username: name, role });
       const uid = db.prepare('SELECT id FROM users WHERE username = ?').pluck().get(name);
       db.prepare('DELETE FROM sessions WHERE user_id = ?').run(uid);
-      console.log(`Пользователь ${name} (${role}) сохранён.${generated ? ` Пароль: ${pw}` : ''}`);
+      const rk = db.prepare('SELECT role FROM users WHERE username = ?').pluck().get(name);
+      console.log(`Пользователь ${name} (${rk}) сохранён.${generated ? ` Пароль: ${pw}` : ''}`);
       break;
     }
     case 'user-del': {
@@ -119,19 +122,25 @@ async function main() {
       break;
     }
     case 'user-list':
-      for (const u of db.prepare('SELECT username, role, active, created FROM users ORDER BY username').all()) {
-        console.log(`${u.username.padEnd(20)} ${u.role.padEnd(9)} ${u.active ? 'активен' : 'отключён'}  с ${u.created}`);
+      for (const u of db.prepare('SELECT username, full_name, role, active, last_login FROM users ORDER BY username').all()) {
+        console.log(`${u.username.padEnd(16)} ${(u.full_name || '').padEnd(22)} ${u.role.padEnd(12)} ${u.active ? 'активен ' : 'отключён'}  вход: ${u.last_login || '—'}`);
+      }
+      break;
+    case 'role-list':
+      for (const r of db.prepare('SELECT key, name, builtin, (SELECT COUNT(*) FROM users u WHERE u.role = roles.key) AS n FROM roles ORDER BY builtin DESC, key').all()) {
+        console.log(`${r.key.padEnd(14)} ${r.name.padEnd(22)} ${r.builtin ? 'встроенная' : 'своя      '}  пользователей: ${r.n}`);
       }
       break;
 
     case 'import-skus': {
-      const rows = readRows(pos[0], 4);
-      const ins = db.prepare(`INSERT INTO sku(art, name, zone, per) VALUES (?,?,?,?)
-        ON CONFLICT(art) DO UPDATE SET name = excluded.name, zone = excluded.zone, per = excluded.per`);
+      const rows = readRows(pos[0], 4, 5);
+      const ins = db.prepare(`INSERT INTO sku(art, name, zone, per, min_qty) VALUES (?,?,?,?,?)
+        ON CONFLICT(art) DO UPDATE SET name = excluded.name, zone = excluded.zone, per = excluded.per, min_qty = excluded.min_qty`);
       db.transaction(() => {
-        for (const [n, [art, name, zone, per]] of rows) {
-          if (!L.zoneById.has(zone)) die(`Строка ${n}: зоны «${zone}» нет в layout.json`);
-          ins.run(art, name, zone, toInt(per, n));
+        for (const [n, [art, name, zone, per, min]] of rows) {
+          if (!L.zoneById.has(zone)) die(`Строка ${n}: зоны «${zone}» нет на складе`);
+          const m = min && /^\d+$/.test(min) ? +min : 0;
+          ins.run(art, name, zone, toInt(per, n), m);
         }
         bump(db);
       })();
@@ -145,7 +154,7 @@ async function main() {
       const ins = db.prepare('INSERT INTO receipt(doc, gate, art, qty, created) VALUES (?,?,?,?,?)');
       db.transaction(() => {
         for (const [n, [art, qty]] of rows) ins.run(opt.doc, opt.gate === true ? '' : (opt.gate || ''), art, toInt(qty, n), now());
-        db.prepare("INSERT INTO oplog(ts, op, qty, user, ref) VALUES (?, 'Поставка загружена', ?, 'импорт', ?)").run(now(), rows.length, opt.doc);
+        db.prepare("INSERT INTO oplog(ts, op, kind, qty, user, ref) VALUES (?, 'Поставка загружена', 'doc', ?, 'импорт', ?)").run(now(), rows.length, opt.doc);
         bump(db);
       })();
       console.log(`Поставка ${opt.doc}: строк ${rows.length}`);
@@ -161,7 +170,7 @@ async function main() {
           .run(opt.number, opt.dealer, opt.due === true ? '' : (opt.due || ''), now()).lastInsertRowid;
         const ins = db.prepare('INSERT INTO order_line(order_id, art, qty) VALUES (?,?,?)');
         for (const [n, [art, qty]] of rows) ins.run(oid, art, toInt(qty, n));
-        db.prepare("INSERT INTO oplog(ts, op, qty, user, ref) VALUES (?, 'Заказ загружен', ?, 'импорт', ?)").run(now(), rows.length, opt.number);
+        db.prepare("INSERT INTO oplog(ts, op, kind, qty, user, ref) VALUES (?, 'Заказ загружен', 'doc', ?, 'импорт', ?)").run(now(), rows.length, opt.number);
         bump(db);
       })();
       console.log(`Заказ ${opt.number}: строк ${rows.length}`);

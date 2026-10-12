@@ -110,3 +110,85 @@ curl -c c.txt -H 'Content-Type: application/json' \
 curl -b c.txt -H 'Content-Type: application/json' -H 'X-Op-Id: 6f1c…' \
   -d '{"art":"FO-15208","qty":2}' http://склад:8090/api/cells/A-01-02-3-1/pick
 ```
+
+---
+
+# WarehouseOS: права и остальные разделы API
+
+## Права
+
+Каждый запрос проверяется по правам роли пользователя. Без права сервер отвечает
+`403 FORBIDDEN` с полем `need` (какие права подошли бы). `GET /api/me` возвращает пользователя,
+список его прав (`perms`) и настройки склада: клиент по ним скрывает недоступные экраны и кнопки.
+
+| Право | Что открывает |
+|---|---|
+| `dashboard.view` / `dashboard.edit` | дашборды и личные дашборды / общие дашборды |
+| `stock.view` | карта, остатки, каталог, документы (чтение) |
+| `stock.put`, `stock.pick`, `stock.move`, `stock.count`, `stock.block` | складские операции |
+| `docs.receipts`, `docs.orders`, `catalog.manage` | создание поставок, заказов, правка каталога |
+| `inventory.count`, `inventory.manage` | подсчёт по заданию / создание и закрытие заданий |
+| `reports.view` | отчёты и выгрузка |
+| `admin.users`, `admin.roles`, `admin.layout`, `admin.settings`, `admin.audit` | администрирование |
+
+Для ТСД кладовщику достаточно встроенной роли `storekeeper`.
+
+## Каталог и документы
+
+| Метод | Путь | Право | Тело / параметры |
+|---|---|---|---|
+| GET | `/api/catalog?q=&zone=` | stock.view | артикулы с остатком, числом ячеек, минимумом |
+| POST | `/api/catalog` | catalog.manage | `{art,name,zone,per,min_qty,isNew?}` |
+| POST | `/api/catalog/import` | catalog.manage | `{rows:[{art,name,zone,per,min_qty}]}` |
+| DELETE | `/api/catalog/{art}` | catalog.manage | только если нигде не используется |
+| GET | `/api/receipts?state=open\|done\|all` | stock.view | поставки со строками |
+| POST | `/api/receipts` | docs.receipts | `{doc,gate,lines:[{art,qty}]}` |
+| DELETE | `/api/receipts/doc/{doc}` | docs.receipts | пока ничего не размещено |
+| GET | `/api/orders?state=open\|done\|all` | stock.view | заказы со строками, взято, остаток на складе |
+| POST | `/api/orders` | docs.orders | `{number,dealer,due:"15:00",lines:[{art,qty}]}` |
+| DELETE | `/api/orders/{id}` | docs.orders | пока ничего не взято |
+
+## Инвентаризация
+
+| Метод | Путь | Право | |
+|---|---|---|---|
+| GET | `/api/inventory` | stock.view или inventory.count | задания с прогрессом и числом расхождений |
+| POST | `/api/inventory` | inventory.manage | `{name, zones:["A"], rows:["B-01"], onlyStocked}` |
+| GET | `/api/inventory/{id}` | stock.view или inventory.count | задание и строки (учёт, факт) |
+| POST | `/api/inventory/{id}/lines/{lineId}` | inventory.count | `{qty, art?}` — факт; поддерживает `opId` |
+| POST | `/api/inventory/{id}/close` | inventory.manage | записывает факт в ячейки |
+| POST | `/api/inventory/{id}/cancel` | inventory.manage | |
+
+`art` указывается, если в ячейке найден не тот артикул, что по учёту, или ячейка числилась пустой.
+Одна ячейка не может быть в двух открытых заданиях (`409 INV_OVERLAP`).
+
+## Дашборды, метрики, отчёты
+
+| Метод | Путь | Право | |
+|---|---|---|---|
+| GET | `/api/metrics` | dashboard.view | каталог метрик: форма данных, параметры, виды |
+| POST | `/api/metrics/batch` | dashboard.view | `{items:[{metric, params:{days,zone,limit}}]}` |
+| GET/POST | `/api/dashboards` | dashboard.view | список / создать (`shared:true` — нужно dashboard.edit) |
+| PUT/DELETE | `/api/dashboards/{id}` | автор или dashboard.edit | `{name, shared, widgets:[{metric,viz,w,params,title}]}` |
+| GET | `/api/reports` | reports.view | список отчётов и справочники для фильтров |
+| GET | `/api/reports/{id}?from=&to=&zone=&user=&kind=&art=…` | reports.view | таблица; `&format=csv` — файл для Excel |
+
+## Администрирование
+
+| Метод | Путь | Право |
+|---|---|---|
+| GET, POST | `/api/admin/users` | admin.users |
+| PATCH | `/api/admin/users/{id}` — `{full_name, role, active}` | admin.users |
+| POST | `/api/admin/users/{id}/password` — без пароля сгенерирует новый | admin.users |
+| POST | `/api/admin/users/{id}/logout` | admin.users |
+| GET | `/api/admin/roles` | admin.users или admin.roles |
+| POST, PUT, DELETE | `/api/admin/roles[/{key}]` — `{key,name,description,perms}` | admin.roles |
+| GET, PUT | `/api/admin/settings` | admin.settings |
+| GET | `/api/admin/backup` — файл базы | admin.settings |
+| GET, PUT | `/api/admin/layout` — `{zones:[…]}` | admin.layout |
+| POST | `/api/admin/layout/preview`, `/api/admin/layout/reset` | admin.layout |
+| GET | `/api/admin/audit?from=&to=&q=` | admin.audit |
+| POST | `/api/me/password` — `{current, password}` | любой вошедший |
+
+`GET /api/rev` теперь возвращает ещё `layoutRev` (меняется при правке топологии — клиенту
+нужно перезапросить `/api/layout`) и `badges` — счётчики открытых поставок, заказов и инвентаризаций.

@@ -1,5 +1,5 @@
 [Unit]
-Description=Parts Yard - address storage for spare parts (Node.js)
+Description=WarehouseOS - address storage for spare parts
 After=network-online.target
 Wants=network-online.target
 

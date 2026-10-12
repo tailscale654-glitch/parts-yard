@@ -1,8 +1,8 @@
 {
   "name": "parts-yard",
-  "version": "1.0.0",
+  "version": "2.0.0",
   "private": true,
-  "description": "Адресный склад запчастей: REST API и веб-интерфейс",
+  "description": "WarehouseOS — адресный склад запчастей: REST API и веб-интерфейс",
   "main": "src/server.js",
   "bin": { "parts-yard": "cli.js" },
   "scripts": {

@@ -16,4 +16,5 @@ module.exports = {
   secureCookie: env.WMS_SECURE_COOKIE === '1',
   cookieName: env.WMS_COOKIE || 'pyard.sid',
   sessionDays: Number(env.WMS_SESSION_DAYS || 14),
+  devStatic: env.WMS_DEV === '1',
 };
