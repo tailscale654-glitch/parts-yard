@@ -199,3 +199,25 @@ test('настройки и аудит', async () => {
   const pub = await as('anon', 'GET', '/api/public');
   assert.strictEqual(pub.data.name, 'Склад №1');
 });
+
+test('фирменный стиль: подпись, логотип, фото', async () => {
+  const pub = await as('anon', 'GET', '/api/public');
+  assert.strictEqual(pub.data.line1, 'JAC MOTORS');
+  const photo = await fetch(base + '/brand/photo');
+  assert.strictEqual(photo.status, 200);
+  assert.match(photo.headers.get('content-type'), /image\/jpeg/);
+  assert.strictEqual((await fetch(base + '/brand/logo')).status, 404);
+  const png = 'data:image/png;base64,' + Buffer.from('89504E470D0A1A0A0000000D49484452000000010000000108060000001F15C4890000000D4944415478DA6364F8FF3F0003010100A50E6A8B0000000049454E44AE426082', 'hex').toString('base64');
+  assert.strictEqual((await as('watch', 'POST', '/api/admin/brand/logo', { dataUrl: png })).status, 403);
+  const fake = 'data:image/png;base64,' + Buffer.from('<svg onload=alert(1)>').toString('base64');
+  assert.strictEqual((await as('boss', 'POST', '/api/admin/brand/logo', { dataUrl: fake })).data.code, 'BAD_IMAGE');
+  assert.strictEqual((await as('boss', 'POST', '/api/admin/brand/logo', { dataUrl: png })).status, 200);
+  const logo = await fetch(base + '/brand/logo');
+  assert.strictEqual(logo.status, 200);
+  assert.strictEqual(logo.headers.get('content-type'), 'image/png');
+  assert.strictEqual((await as('anon', 'GET', '/api/public')).data.hasLogo, true);
+  assert.strictEqual((await as('boss', 'PUT', '/api/admin/settings', { brand_line1: 'ТЕСТ' })).status, 200);
+  assert.strictEqual((await as('anon', 'GET', '/api/public')).data.line1, 'ТЕСТ');
+  assert.strictEqual((await as('boss', 'DELETE', '/api/admin/brand/logo')).status, 200);
+  assert.strictEqual((await fetch(base + '/brand/logo')).status, 404);
+});

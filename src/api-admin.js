@@ -8,6 +8,7 @@ const { hashPassword, genPassword, LOGIN_RE } = require('./auth');
 const { PERMS, PERM_KEYS, permSet, has } = require('./perms');
 const { validateZones, buildLayout, applyLayout, readLayoutFile } = require('./layout');
 const pkg = require('../package.json');
+const { parseDataUrl, KINDS: BRAND_KINDS, DEFAULTS: BRAND_DEFAULTS } = require('./brand');
 
 const ROLE_KEY_RE = /^[a-z][a-z0-9_-]{1,30}$/;
 const STARTED = Date.now();
@@ -151,6 +152,8 @@ module.exports = function adminApi(api, { db, L, cfg, need, h, WmsError }) {
     warehouse_name: { max: 60, dflt: 'Адресный склад запчастей' },
     warehouse_subtitle: { max: 80, dflt: '' },
     poll_seconds: { int: [3, 120], dflt: '8' },
+    brand_line1: { max: 24, dflt: BRAND_DEFAULTS.brand_line1 },
+    brand_line2: { max: 24, dflt: BRAND_DEFAULTS.brand_line2 },
   };
   api.get('/admin/settings', need('admin.settings'), h(() => {
     const values = {};
@@ -182,6 +185,20 @@ module.exports = function adminApi(api, { db, L, cfg, need, h, WmsError }) {
       changed[k] = v;
     }
     audit(db, req.user.username, 'Настройки изменены', changed);
+    return { ok: true };
+  }));
+  // логотип и фото здания для меню и страницы входа
+  api.post('/admin/brand/:kind(logo|photo)', need('admin.settings'), h((req) => {
+    try { parseDataUrl(req.body && req.body.dataUrl, req.params.kind); } catch (e) { throw new WmsError(400, 'BAD_IMAGE', e.message); }
+    setSetting(db, BRAND_KINDS[req.params.kind].key, req.body.dataUrl);
+    setSetting(db, 'brand_v', String(Date.now() % 1e9));
+    audit(db, req.user.username, req.params.kind === 'logo' ? 'Логотип загружен' : 'Фото здания загружено');
+    return { ok: true };
+  }));
+  api.delete('/admin/brand/:kind(logo|photo)', need('admin.settings'), h((req) => {
+    db.prepare('DELETE FROM settings WHERE k = ?').run(BRAND_KINDS[req.params.kind].key);
+    setSetting(db, 'brand_v', String(Date.now() % 1e9));
+    audit(db, req.user.username, req.params.kind === 'logo' ? 'Логотип удалён' : 'Фото здания сброшено');
     return { ok: true };
   }));
   api.get('/admin/backup', need('admin.settings'), async (req, res, next) => {

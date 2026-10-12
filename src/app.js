@@ -10,6 +10,7 @@ const { seedDemo } = require('./demo');
 const { now, getSetting } = require('./db');
 const { PERMS } = require('./perms');
 const { createCarsaleSync } = require('./carsale');
+const { brandInfo, serve: brandServe } = require('./brand');
 
 const ADDR = '[A-Za-z0-9]+-\\d{2}-\\d{2}-\\d+-\\d+';
 
@@ -24,7 +25,7 @@ function createApp({ db, L, cfg }) {
   const app = express();
   if (cfg.trustProxy) app.set('trust proxy', 1);
   app.disable('x-powered-by');
-  app.use(express.json({ limit: '2mb' }));
+  app.use(express.json({ limit: '5mb' }));
   app.use(auth.session);
 
   const pub = path.join(cfg.ROOT, 'public');
@@ -34,10 +35,8 @@ function createApp({ db, L, cfg }) {
     res.sendFile(path.join(pub, 'index.html'));
   });
   app.get('/healthz', (req, res) => res.json({ ok: true, rev: W.rev() }));
-  app.get('/api/public', (req, res) => res.json({
-    name: getSetting(db, 'warehouse_name', 'Адресный склад запчастей'),
-    subtitle: getSetting(db, 'warehouse_subtitle', ''),
-  }));
+  app.get('/api/public', (req, res) => res.json(brandInfo(db)));
+  app.get('/brand/:kind', brandServe(db, cfg.ROOT));
   app.post('/api/login', auth.login);
   app.post('/api/logout', auth.logout);
 
@@ -88,11 +87,7 @@ function createApp({ db, L, cfg }) {
   api.get('/me', h((req) => ({
     user: { username: req.user.username, fullName: req.user.fullName, role: req.user.role, roleName: req.user.roleName },
     perms: req.user.permList,
-    settings: {
-      name: getSetting(db, 'warehouse_name', 'Адресный склад запчастей'),
-      subtitle: getSetting(db, 'warehouse_subtitle', ''),
-      pollSeconds: Number(getSetting(db, 'poll_seconds', '8')) || 8,
-    },
+    settings: { ...brandInfo(db), pollSeconds: Number(getSetting(db, 'poll_seconds', '8')) || 8 },
     demo: !!cfg.demo,
     permCatalog: PERMS,
   })));

@@ -1,7 +1,7 @@
 // Оболочка WarehouseOS: меню по правам, маршруты, опрос сервера, профиль.
 import { S, can, api, esc, icon, h, toast, fail, modal, bus } from './core.js';
 
-const V = '?v=2';
+const V = '?v=3';
 const ROUTES = [
   { grp: 'Обзор' },
   { path: 'dashboard', title: 'Дашборды', icon: 'dash', perm: ['dashboard.view'], mod: './views/dashboard.js' },
@@ -41,6 +41,20 @@ function buildMenu() {
     <div class="links"><button type="button" id="pw">Сменить пароль</button><button type="button" id="logout">Выйти</button></div>`;
   document.getElementById('logout').onclick = async () => { try { await api('/api/logout', { method: 'POST' }); } catch (e) { /* всё равно на вход */ } location.href = '/login'; };
   document.getElementById('pw').onclick = changePassword;
+}
+
+// фото здания, логотип или подпись бренда в меню
+export function applyBrand(b) {
+  S.settings = { ...S.settings, ...b };
+  document.getElementById('whName').textContent = b.name;
+  const sub = document.getElementById('whSub');
+  sub.textContent = b.subtitle || '';
+  sub.hidden = !b.subtitle;
+  document.getElementById('hero').style.backgroundImage = `url("/brand/photo?v=${encodeURIComponent(b.v)}")`;
+  const wm = document.getElementById('wordmark');
+  if (b.hasLogo) wm.innerHTML = `<img src="/brand/logo?v=${encodeURIComponent(b.v)}" alt="${esc(b.line1 || 'Логотип')}">`;
+  else wm.innerHTML = `${b.line1 ? `<span class="l1">${esc(b.line1)}</span>` : ''}${b.line1 && b.line2 ? '<span class="bar"></span>' : ''}${b.line2 ? `<span class="l2">${esc(b.line2)}</span>` : ''}`;
+  wm.hidden = !b.hasLogo && !b.line1 && !b.line2;
 }
 
 function paintBadges() {
@@ -120,13 +134,13 @@ async function poll() {
 }
 // после своих изменений — проверить сразу, не дожидаясь таймера
 bus.addEventListener('changed', () => setTimeout(poll, 50));
+bus.addEventListener('brand', async () => { try { applyBrand(await api('/api/public')); } catch (e) { /* не страшно */ } });
 
 (async function boot() {
   try {
     const me = await api('/api/me');
     S.me = me.user; S.perms = new Set(me.perms); S.settings = me.settings; S.demo = me.demo; S.permCatalog = me.permCatalog;
-    document.getElementById('whName').textContent = me.settings.name;
-    document.getElementById('whSub').textContent = me.settings.subtitle || '';
+    applyBrand(me.settings);
     buildMenu();
     document.getElementById('burger').onclick = () => {
       document.getElementById('shell').classList.add('open');
