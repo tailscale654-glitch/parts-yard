@@ -124,6 +124,28 @@ const MIGRATIONS = [
     db.prepare("INSERT OR IGNORE INTO settings(k, v) VALUES ('warehouse_name', ?), ('warehouse_subtitle', ?)")
       .run('Адресный склад запчастей', 'Центральный склад сети');
   },
+  // 3 — интеграция с Carsale: внешние поля каталога и журнал синхронизаций
+  (db) => {
+    db.exec(`
+      ALTER TABLE sku ADD COLUMN price INTEGER;
+      ALTER TABLE sku ADD COLUMN unit TEXT;
+      ALTER TABLE sku ADD COLUMN brand TEXT;
+      ALTER TABLE sku ADD COLUMN source TEXT NOT NULL DEFAULT 'local';
+      ALTER TABLE sku ADD COLUMN ext_id TEXT;
+      ALTER TABLE sku ADD COLUMN ext_type TEXT;
+      ALTER TABLE sku ADD COLUMN ext_location TEXT;
+      ALTER TABLE sku ADD COLUMN ext_qty INTEGER;
+      ALTER TABLE sku ADD COLUMN ext_reserved INTEGER;
+      ALTER TABLE sku ADD COLUMN ext_active INTEGER NOT NULL DEFAULT 1;
+      ALTER TABLE sku ADD COLUMN ext_synced TEXT;
+      ALTER TABLE sku ADD COLUMN zone_manual INTEGER NOT NULL DEFAULT 0;
+      CREATE TABLE sync_run(
+        id INTEGER PRIMARY KEY, source TEXT NOT NULL, started TEXT NOT NULL, finished TEXT,
+        status TEXT NOT NULL DEFAULT 'running', trigger TEXT, user TEXT, stats TEXT, error TEXT
+      );
+      CREATE INDEX sync_run_started ON sync_run(source, started);
+    `);
+  },
 ];
 
 function now() {

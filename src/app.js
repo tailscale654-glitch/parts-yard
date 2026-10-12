@@ -9,6 +9,7 @@ const { createReports } = require('./reports');
 const { seedDemo } = require('./demo');
 const { now, getSetting } = require('./db');
 const { PERMS } = require('./perms');
+const { createCarsaleSync } = require('./carsale');
 
 const ADDR = '[A-Za-z0-9]+-\\d{2}-\\d{2}-\\d+-\\d+';
 
@@ -18,6 +19,7 @@ function createApp({ db, L, cfg }) {
   const INV = createInventory(db, L);
   const MET = createMetrics(db, L);
   const REP = createReports(db, L);
+  const CS = createCarsaleSync(db, L, cfg, { clientFactory: cfg.carsaleClientFactory });
   const { need } = auth;
   const app = express();
   if (cfg.trustProxy) app.set('trust proxy', 1);
@@ -80,7 +82,7 @@ function createApp({ db, L, cfg }) {
       res.status(out.status).json(out.body);
     };
   }
-  const ctx = { db, L, cfg, W, INV, MET, REP, auth, need, h, mutation, WmsError };
+  const ctx = { db, L, cfg, W, INV, MET, REP, CS, auth, need, h, mutation, WmsError };
 
   // ---------- общее ----------
   api.get('/me', h((req) => ({
@@ -132,6 +134,7 @@ function createApp({ db, L, cfg }) {
   require('./api-docs')(api, ctx);
   require('./api-insights')(api, ctx);
   require('./api-admin')(api, ctx);
+  require('./api-carsale')(api, ctx);
 
   api.post('/demo/reset', need('admin.settings'), (req, res) => {
     if (!cfg.demo) return res.status(403).json({ error: 'Сброс доступен только в демо-режиме (WMS_DEMO=1)', code: 'NOT_DEMO' });
@@ -151,6 +154,7 @@ function createApp({ db, L, cfg }) {
     console.error(err);
     res.status(500).json({ error: 'Внутренняя ошибка сервера', code: 'INTERNAL' });
   });
+  app.locals.carsale = CS;
   return app;
 }
 

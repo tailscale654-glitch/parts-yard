@@ -7,6 +7,7 @@ const { resolveLayout } = require('./src/layout');
 const { openDb, syncCells, now, audit } = require('./src/db');
 const { addUser, genPassword } = require('./src/auth');
 const { seedDemo } = require('./src/demo');
+const { createCarsaleSync } = require('./src/carsale');
 
 const HELP = `WarehouseOS — адресный склад запчастей, команды
 
@@ -24,6 +25,8 @@ const HELP = `WarehouseOS — адресный склад запчастей, к
                                         заказ дилера: артикул;количество
   export-stock <файл.csv>               остатки по адресам
   backup <файл.db>                      резервная копия базы на ходу
+  carsale-sync                          забрать каталог и остатки из Carsale сейчас
+  carsale-status                        состояние интеграции и последние синхронизации
 
 Без пароля в user-add он будет создан случайным и выведен на экран.`;
 
@@ -193,6 +196,25 @@ async function main() {
       console.log(`Резервная копия: ${pos[0]}`);
       break;
 
+    case 'carsale-sync': {
+      const CS = createCarsaleSync(db, L, cfg);
+      if (!CS.configured()) die('Не заданы CARSALE_LOGIN и CARSALE_PASSWORD в /etc/default/parts-yard');
+      console.log(`Вхожу в Carsale (${cfg.carsale.base}) как ${cfg.carsale.login}…`);
+      const r = await CS.run({ trigger: 'console', user: 'консоль' });
+      if (!r.ok) die('Не получилось: ' + r.error);
+      const s = r.stats;
+      console.log(`Готово за ${(s.ms / 1000).toFixed(1)} с: каталог ${s.directory}, строк остатков ${s.stockRows}`);
+      console.log(`Артикулов: новых ${s.added}, обновлено ${s.updated}; на складе по Carsale ${s.withStock} арт. / ${s.units} шт, в брони ${s.reserved} шт`);
+      for (const w of s.warnings) console.log('Внимание: ' + w);
+      break;
+    }
+    case 'carsale-status': {
+      const st = createCarsaleSync(db, L, cfg).status();
+      console.log(st.configured ? `Логин: ${st.login} · ${st.base} · филиал ${st.filial || 'определится при синхронизации'}` : 'Интеграция не настроена');
+      console.log(`Каждые ${st.settings.intervalMin} мин${st.settings.enabled ? '' : ' (автосинхронизация выключена)'} · артикулов из Carsale: ${st.counts.skus}, штук на складе: ${st.counts.units}`);
+      for (const r of st.runs.slice(0, 10)) console.log(`${r.started}  ${r.status.padEnd(7)} ${r.trigger || ''}  ${r.error || (r.stats ? `+${r.stats.added} / ${r.stats.updated} обн. / ${r.stats.units} шт` : '')}`);
+      break;
+    }
     default:
       die(`Неизвестная команда ${cmd}\n\n${HELP}`);
   }

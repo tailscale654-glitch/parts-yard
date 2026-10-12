@@ -23,7 +23,7 @@ export function renderWidget(el, data, viz) {
 }
 
 function kpi(el, d) {
-  const alert = d.alertAbove != null && d.value > d.alertAbove;
+  const alert = d.alert || (d.alertAbove != null && d.value > d.alertAbove);
   el.innerHTML = `<div class="kpiv${alert ? ' alert' : ''}"><div class="v">${fmt(d.value)}${d.unit ? `<small>${esc(d.unit)}</small>` : ''}</div>${d.spark ? spark(d.spark) : ''}</div>
     <div class="kpis-sub">${esc(d.sub || '')}</div>`;
 }

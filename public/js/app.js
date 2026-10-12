@@ -18,6 +18,7 @@ const ROUTES = [
   { path: 'admin/roles', title: 'Роли и права', icon: 'shield', perm: ['admin.roles'], mod: './views/admin-roles.js' },
   { path: 'admin/layout', title: 'Топология', icon: 'grid', perm: ['admin.layout'], mod: './views/admin-layout.js' },
   { path: 'admin/settings', title: 'Настройки', icon: 'gear', perm: ['admin.settings'], mod: './views/admin-settings.js' },
+  { path: 'admin/carsale', title: 'Интеграция Carsale', icon: 'link', perm: ['admin.settings', 'catalog.manage'], mod: './views/admin-carsale.js' },
   { path: 'admin/audit', title: 'Журнал аудита', icon: 'log', perm: ['admin.audit'], mod: './views/admin-audit.js' },
 ];
 const allowed = (r) => r.path && r.perm.some(can);

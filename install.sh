@@ -56,7 +56,12 @@ fi
 if [ ! -f /etc/default/parts-yard ]; then
   sed "s/^WMS_DEMO=.*/WMS_DEMO=$DEMO/" parts-yard.env > /etc/default/parts-yard
   chmod 600 /etc/default/parts-yard
+elif ! grep -q '^CARSALE_LOGIN=' /etc/default/parts-yard; then
+  # обновление со старой версии: дописываем раздел интеграции, существующие настройки не трогаем
+  sed -n '/^# Интеграция с Carsale/,$p' parts-yard.env >> /etc/default/parts-yard
+  echo "В /etc/default/parts-yard добавлен раздел Carsale — впишите CARSALE_LOGIN и CARSALE_PASSWORD"
 fi
+chmod 600 /etc/default/parts-yard
 
 cat > /usr/local/bin/parts-yard <<'EOF'
 #!/bin/sh

@@ -17,4 +17,11 @@ module.exports = {
   cookieName: env.WMS_COOKIE || 'pyard.sid',
   sessionDays: Number(env.WMS_SESSION_DAYS || 14),
   devStatic: env.WMS_DEV === '1',
+  // интеграция с Carsale (только чтение); пароль хранится только здесь, в /etc/default/parts-yard
+  carsale: {
+    base: env.CARSALE_URL || 'https://crm.carsale.uz',
+    login: env.CARSALE_LOGIN || '',
+    password: env.CARSALE_PASSWORD || '',
+    filial: env.CARSALE_FILIAL || '',
+  },
 };

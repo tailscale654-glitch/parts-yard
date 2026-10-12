@@ -5,6 +5,7 @@
 //   category { items:[{label, value, note?}], unit } → горизонтальные полосы или столбцы
 //   rows     { columns:[{key,label,align}], rows }  → таблица
 const { zoneOf } = require('./layout');
+const { reconcile } = require('./carsale');
 
 const VIZ = { scalar: ['kpi'], series: ['line', 'columns'], category: ['bars', 'columns'], rows: ['table'] };
 const PERIODS = [1, 7, 14, 30, 90];
@@ -127,6 +128,35 @@ function createMetrics(db, L) {
         const r = db.prepare(`SELECT COUNT(DISTINCT t.id) AS n, COUNT(l.id) AS lines, COUNT(l.qty_counted) AS done
           FROM inv_task t LEFT JOIN inv_line l ON l.task_id = t.id WHERE t.status = 'open'`).get();
         return { value: r.n, unit: '', sub: r.n ? `посчитано ${r.done} из ${r.lines} ячеек` : 'нет заданий' };
+      },
+    },
+
+    carsale_unplaced: {
+      title: 'Не размещено из Carsale', shape: 'scalar', params: [], group: 'Carsale', alertAbove: 0,
+      run() {
+        const rows = reconcile(db);
+        if (!rows.length) return { value: 0, unit: '', sub: 'синхронизация с Carsale не проводилась' };
+        const un = rows.filter((r) => r.toPlace > 0);
+        return { value: un.reduce((n, r) => n + r.toPlace, 0), unit: 'шт', sub: `${un.length} артикулов ждут адреса` };
+      },
+    },
+    carsale_sync: {
+      title: 'Синхронизация Carsale', shape: 'scalar', params: [], group: 'Carsale',
+      run() {
+        const r = db.prepare("SELECT * FROM sync_run WHERE source = 'carsale' ORDER BY id DESC LIMIT 1").get();
+        if (!r) return { value: '—', unit: '', sub: 'ещё не запускалась' };
+        const min = Math.max(0, Math.round((Date.now() - new Date(r.started.replace(' ', 'T')).getTime()) / 60000));
+        return { value: min < 60 ? min : Math.round(min / 60), unit: min < 60 ? 'мин назад' : 'ч назад',
+          sub: r.status === 'ok' ? 'успешно' : r.status === 'running' ? 'идёт сейчас' : `ошибка: ${String(r.error || '').slice(0, 60)}`, alert: r.status === 'error' };
+      },
+    },
+    carsale_diff: {
+      title: 'Расхождения с Carsale', shape: 'rows', params: ['limit'], group: 'Carsale',
+      run({ limit }) {
+        const rows = reconcile(db).filter((r) => r.diff !== 0).sort((a, b) => Math.abs(b.diff) - Math.abs(a.diff)).slice(0, limit);
+        return { columns: [{ key: 'art', label: 'Артикул', mono: true }, { key: 'ext_total', label: 'Carsale', align: 'r' },
+          { key: 'placed', label: 'В ячейках', align: 'r' }, { key: 'diff', label: 'Разница', align: 'r', type: 'diff' }],
+        rows: rows.map((r) => ({ ...r, ext_total: r.ext_qty + r.ext_reserved })) };
       },
     },
 

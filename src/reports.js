@@ -1,6 +1,7 @@
 'use strict';
 // Отчёты: таблица на экране и выгрузка в CSV для Excel.
 const { zoneOf } = require('./layout');
+const { reconcile } = require('./carsale');
 
 const KIND_LABEL = {
   put: 'Размещение', pick: 'Отбор', move: 'Перемещение', count: 'Пересчёт', block: 'Блокировка',
@@ -219,6 +220,27 @@ function createReports(db, L) {
           rows: [...agg.values()].map((a) => ({ ...a, free: a.cells - a.occupied - (a.blocked - 0),
             occ: Math.round((a.occupied / a.cells) * 100), fill: Math.round((a.fillSum / a.cells) * 100) }))
             .map((a) => ({ ...a, free: Math.max(0, a.cells - a.occupied - a.blocked) })),
+        };
+      },
+    },
+    carsale: {
+      title: 'Сверка с Carsale', group: 'Анализ',
+      description: 'Сколько по Carsale лежит на центральном складе и сколько из этого разложено по ячейкам. «Не размещено» — нужно оприходовать по адресам.',
+      filters: ['zone', 'art', 'status'],
+      run(f) {
+        let rows = reconcile(db);
+        if (f.zone) rows = rows.filter((r) => r.zone === f.zone);
+        if (f.art) rows = rows.filter((r) => r.art.toLowerCase().includes(f.art) || r.name.toLowerCase().includes(f.art));
+        if (f.status === 'low') rows = rows.filter((r) => r.status !== 'совпадает');
+        return {
+          columns: [
+            { key: 'art', label: 'Артикул', mono: true }, { key: 'name', label: 'Наименование' }, { key: 'zone', label: 'Зона' },
+            { key: 'ext_qty', label: 'Carsale: на складе', align: 'r', sum: true }, { key: 'ext_reserved', label: 'Бронь', align: 'r', sum: true },
+            { key: 'placed', label: 'В ячейках', align: 'r', sum: true }, { key: 'pending', label: 'В приёмке', align: 'r', sum: true },
+            { key: 'diff', label: 'Разница', align: 'r', sum: true, type: 'diff' }, { key: 'status', label: 'Статус', type: 'status' },
+            { key: 'ext_location', label: 'Место в Carsale' },
+          ],
+          rows: rows.map((r) => ({ ...r, ext_location: r.ext_location || '' })),
         };
       },
     },

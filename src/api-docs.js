@@ -45,7 +45,12 @@ module.exports = function docsApi(api, { db, L, INV, need, h, mutation, WmsError
       const stocked = db.prepare('SELECT COUNT(*) FROM cell WHERE sku = ?').pluck().get(r.art);
       if (stocked) throw new WmsError(409, 'SKU_STOCKED', `Нельзя сменить зону: ${r.art} лежит в ${stocked} ячейках зоны ${exists.zone}. Сначала переместите товар.`);
     }
-    db.transaction(() => { upsertSku.run(r); audit(db, req.user.username, exists ? 'Артикул изменён' : 'Артикул добавлен', r); bump(); })();
+    db.transaction(() => {
+      upsertSku.run(r);
+      if (exists && exists.zone !== r.zone) db.prepare('UPDATE sku SET zone_manual = 1 WHERE art = ?').run(r.art);
+      audit(db, req.user.username, exists ? 'Артикул изменён' : 'Артикул добавлен', r);
+      bump();
+    })();
     return { ok: true, item: r };
   }));
   api.post('/catalog/import', need('catalog.manage'), h((req) => {

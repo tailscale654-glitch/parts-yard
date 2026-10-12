@@ -10,6 +10,9 @@ syncCells(db, L);
 const users = db.prepare('SELECT COUNT(*) FROM users WHERE active = 1').pluck().get();
 const app = createApp({ db, L, cfg });
 
+app.locals.carsale.schedule();
+if (cfg.carsale.login) console.log(`Carsale: синхронизация от имени ${cfg.carsale.login}`);
+
 const server = app.listen(cfg.port, cfg.bind, () => {
   console.log(`WarehouseOS: http://${cfg.bind}:${cfg.port} (база ${cfg.dbPath}, ячеек ${L.meta.size}, пользователей ${users}${cfg.demo ? ', демо-режим' : ''})`);
   if (!users) console.warn('Нет ни одного пользователя. Создайте: sudo parts-yard user-add admin --role admin');

@@ -192,3 +192,16 @@ curl -b c.txt -H 'Content-Type: application/json' -H 'X-Op-Id: 6f1c…' \
 
 `GET /api/rev` теперь возвращает ещё `layoutRev` (меняется при правке топологии — клиенту
 нужно перезапросить `/api/layout`) и `badges` — счётчики открытых поставок, заказов и инвентаризаций.
+
+## Интеграция Carsale
+
+| Метод | Путь | Право | |
+|---|---|---|---|
+| GET | `/api/integrations/carsale` | admin.settings или catalog.manage | состояние, настройки, история синхронизаций (без пароля) |
+| PUT | `/api/integrations/carsale/settings` | admin.settings | `{enabled, intervalMin, statusIds, storeIds, zoneMap:{"TOOLS":"D"}, defaultZone, defaultPer}` |
+| POST | `/api/integrations/carsale/sync` | admin.settings или catalog.manage | синхронизировать сейчас; `502 CARSALE_FAILED` с текстом ошибки |
+| GET | `/api/integrations/carsale/reconcile` | stock.view | по артикулу: в Carsale, бронь, в ячейках, в приёмке, разница, статус |
+| POST | `/api/integrations/carsale/receipt` | docs.receipts | поставка `CS-ГГММДД-ЧЧММ` на неразмещённое |
+
+У артикулов из Carsale в каталоге есть поля `source:"carsale"`, `ext_qty` (на складе по Carsale), `ext_reserved` (бронь),
+`price`, `unit`, `brand`, `ext_type`, `ext_location`.
