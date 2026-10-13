@@ -2,7 +2,7 @@
 // быстрый поиск (Ctrl K / ⌘K) и нижняя панель вкладок на телефоне.
 import { S, can, api, esc, icon, h, toast, fail, modal, bus } from './core.js';
 
-const V = '?v=5';
+const V = '?v=6';
 const ROUTES = [
   { grp: 'Обзор' },
   { path: 'dashboard', title: 'Дашборды', short: 'Обзор', icon: 'dash', perm: ['dashboard.view'], mod: './views/dashboard.js' },
@@ -73,29 +73,16 @@ async function logout() {
   location.href = '/login';
 }
 
-// фото здания, логотип или подпись бренда в меню
+// фото здания — фон страниц; в меню только знак JAC (или загруженный в настройках логотип)
+let EMBLEM = null;
 export function applyBrand(b) {
   S.settings = { ...S.settings, ...b };
-  document.getElementById('whName').textContent = b.name;
-  const sub = document.getElementById('whSub');
-  sub.textContent = b.subtitle || '';
-  sub.hidden = !b.subtitle;
   document.documentElement.style.setProperty('--photo', `url("/brand/photo?v=${encodeURIComponent(b.v)}")`);
-  const wm = document.getElementById('wordmark');
-  if (b.hasLogo) wm.innerHTML = `<img src="/brand/logo?v=${encodeURIComponent(b.v)}" alt="${esc(b.line1 || 'Логотип')}">`;
-  else wm.innerHTML = `${b.line1 ? `<span class="l1">${esc(b.line1)}</span>` : ''}${b.line1 && b.line2 ? '<span class="bar"></span>' : ''}${b.line2 ? `<span class="l2">${esc(b.line2)}</span>` : ''}`;
-  wm.hidden = !b.hasLogo && !b.line1 && !b.line2;
-  fitWordmark();
-  if (document.fonts && document.fonts.ready) document.fonts.ready.then(fitWordmark);
-}
-
-// подпись бренда всегда помещается в ширину меню: уменьшаем шрифт, пока не влезет
-function fitWordmark() {
-  const wm = document.getElementById('wordmark');
-  if (!wm || wm.hidden || wm.querySelector('img')) return;
-  let k = 1;
-  wm.style.setProperty('--wm', k);
-  while (wm.scrollWidth > wm.clientWidth + 1 && k > 0.55) { k -= 0.04; wm.style.setProperty('--wm', k.toFixed(2)); }
+  const em = document.getElementById('emblem');
+  if (!em) return;
+  if (EMBLEM === null) EMBLEM = em.innerHTML;
+  em.innerHTML = b.hasLogo ? `<img src="/brand/logo?v=${encodeURIComponent(b.v)}" alt="Логотип">` : EMBLEM;
+  em.classList.toggle('custom', !!b.hasLogo);
 }
 
 function paintBadges() {

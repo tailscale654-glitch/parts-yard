@@ -393,7 +393,14 @@ body{font:14px/1.45 var(--font-ui);-webkit-font-smoothing:antialiased;-moz-osx-f
 .sign .wh{font:600 19px/1.15 var(--font-display);letter-spacing:-.01em;margin-top:4px}
 .sign .sub{font-size:12.5px;color:var(--muted);margin-top:-2px}
 .brandline{height:2px;margin:6px 18px 4px;border-radius:2px}
-.search-trigger{margin:8px 12px 2px;display:flex;align-items:center;gap:8px;padding:7px 10px;border:0;border-radius:var(--radius-sm);background:var(--fill);
+/* шапка меню: только знак JAC */
+a.sign{display:block;padding:24px 20px 16px;text-decoration:none;color:var(--accent);border-radius:0}
+a.sign:hover{background:none}
+a.sign:focus-visible{box-shadow:inset var(--ring)}
+.emblem{display:block}
+.emblem svg{display:block;width:148px;height:auto;color:var(--accent)}
+.emblem.custom img{display:block;max-width:180px;max-height:48px}
+.search-trigger{margin:0 12px 2px;display:flex;align-items:center;gap:8px;padding:7px 10px;border:0;border-radius:var(--radius-sm);background:var(--fill);
   color:var(--muted);font-size:13px;text-align:left}
 .search-trigger:hover{background:var(--fill-strong)}
 .search-trigger svg{width:15px;height:15px;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round}
@@ -543,3 +550,4 @@ table.t tbody tr:hover td{background:color-mix(in srgb,var(--accent) 6%,transpar
   .tabbar span{max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
   .side{background:var(--surface)}
 }
+@media (hover:none){.search-trigger kbd{display:none}}
