@@ -146,6 +146,24 @@ const MIGRATIONS = [
       CREATE INDEX sync_run_started ON sync_run(source, started);
     `);
   },
+  // 4 — справочник дилеров (свои и из Carsale), заказы ссылаются на дилера
+  (db) => {
+    db.exec(`
+      CREATE TABLE dealer(
+        id INTEGER PRIMARY KEY,
+        name TEXT NOT NULL, name_key TEXT NOT NULL,
+        code TEXT, region TEXT, city TEXT, address TEXT, phone TEXT, inn TEXT, note TEXT,
+        source TEXT NOT NULL DEFAULT 'local', ext_id TEXT UNIQUE,
+        active INTEGER NOT NULL DEFAULT 1,
+        created TEXT NOT NULL, updated TEXT, synced TEXT
+      );
+      CREATE INDEX dealer_name_key ON dealer(name_key);
+      ALTER TABLE orders ADD COLUMN dealer_id INTEGER REFERENCES dealer(id);
+      CREATE INDEX orders_dealer ON orders(dealer_id);
+    `);
+    // дилеры из уже существующих заказов становятся «своими» записями справочника
+    require('./dealers').linkOrderDealers(db);
+  },
 ];
 
 function now() {

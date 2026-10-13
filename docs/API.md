@@ -145,7 +145,7 @@ curl -b c.txt -H 'Content-Type: application/json' -H 'X-Op-Id: 6f1c…' \
 | POST | `/api/receipts` | docs.receipts | `{doc,gate,lines:[{art,qty}]}` |
 | DELETE | `/api/receipts/doc/{doc}` | docs.receipts | пока ничего не размещено |
 | GET | `/api/orders?state=open\|done\|all` | stock.view | заказы со строками, взято, остаток на складе |
-| POST | `/api/orders` | docs.orders | `{number,dealer,due:"15:00",lines:[{art,qty}]}` |
+| POST | `/api/orders` | docs.orders | `{number,dealer_id?,dealer,due:"15:00",lines:[{art,qty}]}` — дилер по `dealer_id` или по имени; нового заводим в справочник (`newDealer:true`) |
 | DELETE | `/api/orders/{id}` | docs.orders | пока ничего не взято |
 
 ## Инвентаризация
@@ -193,13 +193,25 @@ curl -b c.txt -H 'Content-Type: application/json' -H 'X-Op-Id: 6f1c…' \
 `GET /api/rev` теперь возвращает ещё `layoutRev` (меняется при правке топологии — клиенту
 нужно перезапросить `/api/layout`) и `badges` — счётчики открытых поставок, заказов и инвентаризаций.
 
+## Дилеры
+
+| Метод | Путь | Право | |
+|---|---|---|---|
+| GET | `/api/dealers` | stock.view | справочник с числом заказов, регионы, состояние проверки в Carsale |
+| GET | `/api/dealers/{id}` | stock.view | карточка: последние 30 заказов и итоги |
+| POST | `/api/dealers` | docs.orders | свой дилер `{name,code,region,city,address,phone,inn,note}`; `409 DEALER_EXISTS` |
+| PUT | `/api/dealers/{id}` | docs.orders | у своего — все поля и `active`; у дилера из Carsale — только `note` |
+| DELETE | `/api/dealers/{id}` | docs.orders | только свой и без заказов (`409 HAS_ORDERS`, `409 FROM_CARSALE`) |
+
+Дилеры из Carsale (`source:"carsale"`, `ext_id`) обновляются синхронизацией; пропавшие получают `active:0`.
+
 ## Интеграция Carsale
 
 | Метод | Путь | Право | |
 |---|---|---|---|
 | GET | `/api/integrations/carsale` | admin.settings или catalog.manage | состояние, настройки, история синхронизаций (без пароля) |
-| PUT | `/api/integrations/carsale/settings` | admin.settings | `{enabled, intervalMin, statusIds, storeIds, zoneMap:{"TOOLS":"D"}, defaultZone, defaultPer}` |
-| POST | `/api/integrations/carsale/sync` | admin.settings или catalog.manage | синхронизировать сейчас; `502 CARSALE_FAILED` с текстом ошибки |
+| PUT | `/api/integrations/carsale/settings` | admin.settings | `{enabled, dealers, intervalMin, statusIds, storeIds, zoneMap:{"TOOLS":"D"}, defaultZone, defaultPer}` |
+| POST | `/api/integrations/carsale/sync` | admin.settings или catalog.manage | синхронизировать сейчас (каталог, остатки, дилеры); `partial:true` если одна часть не удалась; `502 CARSALE_FAILED` если не удалось ничего |
 | GET | `/api/integrations/carsale/reconcile` | stock.view | по артикулу: в Carsale, бронь, в ячейках, в приёмке, разница, статус |
 | POST | `/api/integrations/carsale/receipt` | docs.receipts | поставка `CS-ГГММДД-ЧЧММ` на неразмещённое |
 

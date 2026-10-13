@@ -14,7 +14,10 @@
 //        фильтры status_ids, store_ids, type_ids — массивы чисел
 //   /b/tmc_hybrid&get_tmc_store_list         — склады
 //   /b/tmc_hybrid&get_tmc_types              — типы (A, B, C, D, TOOLS)
+//   /b/monster/bot&table_dealers             — справочник дилеров (all: "Y" — все, иначе по region_id)
+//   /b/monster/bot&table_regions             — регионы
 const { now, getSetting, setSetting, audit } = require('./db');
+const dealersDb = require('./dealers');
 
 const PAGE = 1000;
 const STATUS_IN_STOCK = 8;      // «На складе»
@@ -110,7 +113,16 @@ function createClient({ base, login, password, filial, timeoutMs = 30000, fetchI
     return { rows: [...byId.values()], total };
   }
 
-  return { auth, call, ensureFilial, stockList, get filialId() { return filialId; } };
+  async function dealers() {
+    await ensureFilial();
+    let rows = arr(await call('/b/monster/bot&table_dealers', { all: 'Y' }));
+    // на старых версиях Carsale «все» не поддерживается — тогда без параметра
+    if (!rows.length) rows = arr(await call('/b/monster/bot&table_dealers'));
+    const regions = await call('/b/monster/bot&table_regions').then(arr).catch(() => []);
+    return { rows, regions };
+  }
+
+  return { auth, call, ensureFilial, stockList, dealers, get filialId() { return filialId; } };
 }
 
 // ---------- синхронизация ----------
@@ -124,12 +136,14 @@ function readSettings(db, L) {
     zoneMap: j('carsale_zone_map', {}),
     defaultZone: getSetting(db, 'carsale_default_zone', L.zones[0] ? L.zones[0].id : 'A'),
     defaultPer: Number(getSetting(db, 'carsale_default_per', '20')) || 20,
+    dealers: getSetting(db, 'carsale_dealers', '1') === '1',
   };
 }
 
 function writeSettings(db, L, body) {
   const out = {};
   if (body.enabled !== undefined) out.carsale_enabled = body.enabled ? '1' : '0';
+  if (body.dealers !== undefined) out.carsale_dealers = body.dealers ? '1' : '0';
   if (body.intervalMin !== undefined) {
     const n = Number(body.intervalMin);
     if (!Number.isInteger(n) || n < 5 || n > 1440) throw new Error('Интервал — от 5 до 1440 минут');
@@ -270,22 +284,54 @@ function createCarsaleSync(db, L, cfg, { clientFactory } = {}) {
     return stats;
   }
 
+  // дилеры: сверка справочника; изменения пишем в журнал аудита, чтобы было видно, что поменялось
+  async function syncDealers(client) {
+    const { rows, regions } = await client.dealers();
+    const st = dealersDb.applyCarsaleDealers(db, rows, regions);
+    const changed = st.added + st.updated + st.linked + st.off + st.on;
+    if (changed) {
+      const parts = [st.added && `${st.added} новых`, st.linked && `${st.linked} привязано`, st.updated && `${st.updated} изменено`,
+        st.off && `${st.off} отключено`, st.on && `${st.on} снова активны`].filter(Boolean).join(', ');
+      audit(db, 'carsale', `Дилеры Carsale: ${parts}`, st.changes);
+      db.exec("UPDATE meta SET v = v + 1 WHERE k = 'rev'");
+    }
+    return st;
+  }
+
   async function run({ trigger = 'auto', user = null } = {}) {
     if (running) return running;
     if (!configured()) throw new CarsaleError('Интеграция не настроена: задайте CARSALE_LOGIN и CARSALE_PASSWORD в /etc/default/parts-yard');
     const S = readSettings(db, L);
     const id = db.prepare("INSERT INTO sync_run(source, started, trigger, user) VALUES ('carsale', ?, ?, ?)").run(now(), trigger, user).lastInsertRowid;
     const t0 = Date.now();
+    const errText = (e) => {
+      if (!(e instanceof CarsaleError)) console.error(e);
+      return e instanceof CarsaleError ? e.message : `Ошибка синхронизации: ${e.message}`;
+    };
     running = (async () => {
       try {
-        const data = await fetchAll(makeClient(), S);
-        const stats = apply(data, S);
-        stats.ms = Date.now() - t0;
-        db.prepare("UPDATE sync_run SET finished = ?, status = 'ok', stats = ? WHERE id = ?").run(now(), JSON.stringify(stats), id);
-        return { ok: true, id, stats };
+        const client = makeClient();
+        const errors = [];
+        let stats = null;
+        try {
+          const data = await fetchAll(client, S);
+          stats = apply(data, S);
+        } catch (e) { errors.push(errText(e)); }
+        if (S.dealers) {
+          try {
+            const d = await syncDealers(client);
+            stats = stats || { warnings: [] };
+            stats.dealers = d;
+            stats.warnings.push(...d.warnings);
+          } catch (e) { errors.push(`Дилеры: ${errText(e)}`); }
+        }
+        if (stats) stats.ms = Date.now() - t0;
+        const status = !errors.length ? 'ok' : stats ? 'partial' : 'error';
+        db.prepare('UPDATE sync_run SET finished = ?, status = ?, stats = ?, error = ? WHERE id = ?')
+          .run(now(), status, stats ? JSON.stringify(stats) : null, errors.length ? errors.join('; ') : null, id);
+        return errors.length && !stats ? { ok: false, id, error: errors.join('; ') } : { ok: true, id, stats, partial: !!errors.length, error: errors.join('; ') || null };
       } catch (e) {
-        const msg = e instanceof CarsaleError ? e.message : `Ошибка синхронизации: ${e.message}`;
-        if (!(e instanceof CarsaleError)) console.error(e);
+        const msg = errText(e);
         db.prepare("UPDATE sync_run SET finished = ?, status = 'error', error = ? WHERE id = ?").run(now(), msg, id);
         return { ok: false, id, error: msg };
       } finally {
@@ -329,6 +375,8 @@ function createCarsaleSync(db, L, cfg, { clientFactory } = {}) {
       stores: j('carsale_stores'),
       types: j('carsale_types'),
       counts,
+      dealers: db.prepare(`SELECT COUNT(*) AS total, COALESCE(SUM(active), 0) AS active, MAX(synced) AS synced
+        FROM dealer WHERE source = 'carsale'`).get(),
       runs,
     };
   }

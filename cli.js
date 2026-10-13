@@ -8,6 +8,7 @@ const { openDb, syncCells, now, audit } = require('./src/db');
 const { addUser, genPassword } = require('./src/auth');
 const { seedDemo } = require('./src/demo');
 const { createCarsaleSync } = require('./src/carsale');
+const { resolveDealer, list: dealerList } = require('./src/dealers');
 
 const HELP = `WarehouseOS — адресный склад запчастей, команды
 
@@ -25,7 +26,8 @@ const HELP = `WarehouseOS — адресный склад запчастей, к
                                         заказ дилера: артикул;количество
   export-stock <файл.csv>               остатки по адресам
   backup <файл.db>                      резервная копия базы на ходу
-  carsale-sync                          забрать каталог и остатки из Carsale сейчас
+  dealer-list                           справочник дилеров
+  carsale-sync                          забрать каталог, остатки и дилеров из Carsale сейчас
   carsale-status                        состояние интеграции и последние синхронизации
 
 Без пароля в user-add он будет создан случайным и выведен на экран.`;
@@ -169,8 +171,9 @@ async function main() {
       checkSkus(db, rows);
       if (db.prepare('SELECT 1 FROM orders WHERE number = ?').get(opt.number)) die(`Заказ ${opt.number} уже есть`);
       db.transaction(() => {
-        const oid = db.prepare('INSERT INTO orders(number, dealer, due, created) VALUES (?,?,?,?)')
-          .run(opt.number, opt.dealer, opt.due === true ? '' : (opt.due || ''), now()).lastInsertRowid;
+        const d = resolveDealer(db, { name: String(opt.dealer) });
+        const oid = db.prepare('INSERT INTO orders(number, dealer, dealer_id, due, created) VALUES (?,?,?,?,?)')
+          .run(opt.number, d.name, d.id, opt.due === true ? '' : (opt.due || ''), now()).lastInsertRowid;
         const ins = db.prepare('INSERT INTO order_line(order_id, art, qty) VALUES (?,?,?)');
         for (const [n, [art, qty]] of rows) ins.run(oid, art, toInt(qty, n));
         db.prepare("INSERT INTO oplog(ts, op, kind, qty, user, ref) VALUES (?, 'Заказ загружен', 'doc', ?, 'импорт', ?)").run(now(), rows.length, opt.number);
@@ -203,16 +206,32 @@ async function main() {
       const r = await CS.run({ trigger: 'console', user: 'консоль' });
       if (!r.ok) die('Не получилось: ' + r.error);
       const s = r.stats;
-      console.log(`Готово за ${(s.ms / 1000).toFixed(1)} с: каталог ${s.directory}, строк остатков ${s.stockRows}`);
-      console.log(`Артикулов: новых ${s.added}, обновлено ${s.updated}; на складе по Carsale ${s.withStock} арт. / ${s.units} шт, в брони ${s.reserved} шт`);
+      console.log(`Готово за ${(s.ms / 1000).toFixed(1)} с`);
+      if (s.directory != null) {
+        console.log(`Каталог ${s.directory}, строк остатков ${s.stockRows}`);
+        console.log(`Артикулов: новых ${s.added}, обновлено ${s.updated}; на складе по Carsale ${s.withStock} арт. / ${s.units} шт, в брони ${s.reserved} шт`);
+      }
+      if (s.dealers) {
+        const d = s.dealers;
+        console.log(`Дилеров в Carsale ${d.total}: новых ${d.added}, привязано к своим ${d.linked}, изменено ${d.updated}, отключено ${d.off}`);
+        for (const c of d.changes.slice(0, 15)) console.log(`  ${{ add: '+', link: '=', upd: '~', off: '−', on: '+' }[c.kind]} ${c.name}${c.detail ? ` (${c.detail})` : ''}`);
+      }
       for (const w of s.warnings) console.log('Внимание: ' + w);
+      if (r.partial) console.log('Частично не получилось: ' + r.error);
+      break;
+    }
+    case 'dealer-list': {
+      const rows = dealerList(db);
+      for (const d of rows) console.log(`${String(d.id).padStart(4)}  ${d.source === 'carsale' ? 'Carsale' : 'свой   '}  ${d.active ? '      ' : 'откл. '}  ${String(d.orders).padStart(4)} зак.  ${d.name}`);
+      console.log(`Всего ${rows.length}, из Carsale ${rows.filter((d) => d.source === 'carsale').length}`);
       break;
     }
     case 'carsale-status': {
       const st = createCarsaleSync(db, L, cfg).status();
       console.log(st.configured ? `Логин: ${st.login} · ${st.base} · филиал ${st.filial || 'определится при синхронизации'}` : 'Интеграция не настроена');
       console.log(`Каждые ${st.settings.intervalMin} мин${st.settings.enabled ? '' : ' (автосинхронизация выключена)'} · артикулов из Carsale: ${st.counts.skus}, штук на складе: ${st.counts.units}`);
-      for (const r of st.runs.slice(0, 10)) console.log(`${r.started}  ${r.status.padEnd(7)} ${r.trigger || ''}  ${r.error || (r.stats ? `+${r.stats.added} / ${r.stats.updated} обн. / ${r.stats.units} шт` : '')}`);
+      console.log(`Дилеров из Carsale: ${st.dealers.total}, активных ${st.dealers.active}${st.settings.dealers ? '' : ' (загрузка дилеров выключена)'}`);
+      for (const r of st.runs.slice(0, 10)) console.log(`${r.started}  ${r.status.padEnd(7)} ${r.trigger || ''}  ${r.error || ''}${r.stats && r.stats.added != null ? ` +${r.stats.added} / ${r.stats.updated} обн. / ${r.stats.units} шт` : ''}${r.stats && r.stats.dealers ? ` · дилеров ${r.stats.dealers.total}` : ''}`);
       break;
     }
     default:

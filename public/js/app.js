@@ -2,7 +2,7 @@
 // быстрый поиск (Ctrl K / ⌘K) и нижняя панель вкладок на телефоне.
 import { S, can, api, esc, icon, h, toast, fail, modal, bus } from './core.js';
 
-const V = '?v=6';
+const V = '?v=7';
 const ROUTES = [
   { grp: 'Обзор' },
   { path: 'dashboard', title: 'Дашборды', short: 'Обзор', icon: 'dash', perm: ['dashboard.view'], mod: './views/dashboard.js' },
@@ -10,6 +10,7 @@ const ROUTES = [
   { path: 'map', title: 'Карта склада', short: 'Карта', icon: 'map', perm: ['stock.view'], mod: './views/map.js' },
   { path: 'receipts', title: 'Поставки', short: 'Поставки', icon: 'inbound', perm: ['stock.view'], mod: './views/receipts.js', badge: 'receipts' },
   { path: 'orders', title: 'Заказы дилеров', short: 'Заказы', icon: 'outbound', perm: ['stock.view'], mod: './views/orders.js', badge: 'orders' },
+  { path: 'dealers', title: 'Дилеры', short: 'Дилеры', icon: 'store', perm: ['stock.view'], mod: './views/dealers.js' },
   { path: 'catalog', title: 'Каталог', short: 'Каталог', icon: 'box', perm: ['stock.view'], mod: './views/catalog.js' },
   { grp: 'Контроль' },
   { path: 'inventory', title: 'Инвентаризация', short: 'Пересчёт', icon: 'check', perm: ['stock.view', 'inventory.count'], mod: './views/inventory.js', badge: 'inventory' },
@@ -23,7 +24,7 @@ const ROUTES = [
   { path: 'admin/audit', title: 'Журнал аудита', icon: 'log', perm: ['admin.audit'], mod: './views/admin-audit.js' },
 ];
 // разделы для нижней панели на телефоне, по важности; показываем первые четыре доступных
-const TAB_ORDER = ['dashboard', 'map', 'orders', 'receipts', 'catalog', 'inventory', 'reports'];
+const TAB_ORDER = ['dashboard', 'map', 'orders', 'receipts', 'catalog', 'dealers', 'inventory', 'reports'];
 const allowed = (r) => r.path && r.perm.some(can);
 const IS_MAC = /Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgent || '');
 
@@ -119,8 +120,9 @@ function palData() {
   const stock = can('stock.view');
   PAL.loading = Promise.allSettled([
     stock ? api('/api/catalog') : null, stock ? api('/api/orders') : null, stock ? api('/api/receipts') : null, stock ? api('/api/layout') : null,
-  ]).then(([cat, ord, rec, lay]) => {
-    PAL.data = { skus: cat.value?.items || [], orders: ord.value?.orders || [], receipts: rec.value?.docs || [], zones: lay.value?.zones || [] };
+    stock ? api('/api/dealers') : null,
+  ]).then(([cat, ord, rec, lay, dl]) => {
+    PAL.data = { skus: cat.value?.items || [], orders: ord.value?.orders || [], receipts: rec.value?.docs || [], zones: lay.value?.zones || [], dealers: dl.value?.dealers || [] };
     PAL.at = Date.now(); PAL.loading = null;
     return PAL.data;
   });
@@ -185,6 +187,16 @@ function palSearch(raw, d) {
       t: 'Заказы дилеров', items: orders.map((o) => ({
         icon: 'outbound', html: `Заказ <b>${mark(o.number, q)}</b> · ${mark(o.dealer, q)}`, sub: `собрано ${o.picked || 0} из ${o.total || 0}${o.due ? ' · к ' + esc(o.due) : ''}`,
         href: `#/map?order=${o.id}`,
+      })),
+    });
+  }
+  const dls = d.dealers.filter((x) => x.name.toLowerCase().includes(q) || norm(x.code).includes(nq) && nq.length > 1)
+    .sort((a, b) => b.active - a.active || b.open_orders - a.open_orders).slice(0, 5);
+  if (dls.length) {
+    out.push({
+      t: 'Дилеры', items: dls.map((x) => ({
+        icon: 'store', html: mark(x.name, q), sub: [x.source === 'carsale' ? 'Carsale' : 'свой', x.open_orders ? `в работе ${x.open_orders}` : `${x.orders} зак.`, x.active ? '' : 'отключён'].filter(Boolean).join(' · '),
+        href: `#/dealers?open=${x.id}`,
       })),
     });
   }

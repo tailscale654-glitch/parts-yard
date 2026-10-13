@@ -3,6 +3,22 @@ import { api, esc, can, icon, toast, fail, table, pageHead, fmtTs, fmt, confirmB
 
 const STATUSES = [[8, 'На складе'], [62, 'Бронь для заказа'], [81, 'Перемещение к дилеру'], [66, 'Брак']];
 const TRIGGER = { auto: 'по расписанию', manual: 'вручную', console: 'из консоли' };
+const STATUS_PILL = { ok: '<span class="pill ok">успешно</span>', partial: '<span class="pill wait">частично</span>', running: '<span class="pill wait">идёт</span>', error: '<span class="pill bad">ошибка</span>' };
+
+function dealersText(d) {
+  if (!d) return '';
+  const ch = [d.added && `+${d.added}`, d.linked && `привязано ${d.linked}`, d.updated && `изм. ${d.updated}`, d.off && `откл. ${d.off}`, d.on && `вернулись ${d.on}`].filter(Boolean).join(', ');
+  return `дилеров ${d.total}${ch ? ` (${ch})` : ''}`;
+}
+function resultText(r) {
+  const s = r.stats, parts = [];
+  if (s && s.added != null) parts.push(`новых ${s.added}, обновлено ${s.updated}, на складе ${fmt(s.units)} шт, бронь ${fmt(s.reserved)} шт`);
+  if (s && s.dealers) parts.push(dealersText(s.dealers));
+  if (s && s.ms != null) parts.push(`${(s.ms / 1000).toFixed(1)} с`);
+  if (s && s.warnings && s.warnings.length) parts.push(s.warnings.join('; '));
+  if (r.error) parts.push(r.error);
+  return parts.join(' · ');
+}
 
 export async function mount(root) {
   let st = null, rec = null, zones = [];
@@ -35,18 +51,20 @@ sudo parts-yard carsale-sync      # первая синхронизация с �
         <p class="note" style="margin:0">Лучше завести в Carsale отдельного пользователя только с просмотром запчастей.</p></div></div>` : ''}
       <div class="wgrid">
         <section class="w"><h3>Последняя синхронизация</h3><div class="kpiv${last && last.status === 'error' ? ' alert' : ''}"><div class="v" style="font-size:22px">${last ? fmtTs(last.started) : '—'}</div></div>
-          <div class="kpis-sub">${last ? (last.status === 'ok' ? `успешно, ${TRIGGER[last.trigger] || ''}` : last.status === 'running' ? 'идёт сейчас' : `<span class="err">${esc(last.error || 'ошибка')}</span>`) : 'ещё не было'}</div></section>
+          <div class="kpis-sub">${last ? (last.status === 'ok' ? `успешно, ${TRIGGER[last.trigger] || ''}` : last.status === 'running' ? 'идёт сейчас' : `<span class="err">${last.status === 'partial' ? 'частично: ' : ''}${esc(last.error || 'ошибка')}</span>`) : 'ещё не было'}</div></section>
         <section class="w"><h3>Артикулов из Carsale</h3><div class="kpiv"><div class="v">${fmt(st.counts.skus)}</div></div><div class="kpis-sub">${fmt(st.counts.inStock || 0)} есть на центральном складе</div></section>
         <section class="w"><h3>Штук по Carsale</h3><div class="kpiv"><div class="v">${fmt(st.counts.units)}<small>шт</small></div></div><div class="kpis-sub">статусы: ${esc(st.settings.statusIds.map((id) => (STATUSES.find((s) => s[0] === id) || [0, id])[1]).join(', '))}</div></section>
         <section class="w"><h3>Не размещено по ячейкам</h3><div class="kpiv${sm.unplacedUnits ? ' alert' : ''}"><div class="v">${fmt(sm.unplacedUnits)}<small>шт</small></div></div>
           <div class="kpis-sub">${sm.unplacedSkus} артикулов · <a href="#/reports/carsale?status=low">сверка</a></div></section>
+        <section class="w"><h3>Дилеров из Carsale</h3><div class="kpiv"><div class="v">${fmt(st.dealers.total)}</div></div>
+          <div class="kpis-sub">${st.settings.dealers ? `${fmt(st.dealers.active)} активных · <a href="#/dealers">справочник</a>` : 'загрузка выключена'}</div></section>
       </div>
       <div class="grid2" style="align-items:start">
         <div class="card"><div class="ch"><h2>Подключение</h2></div><div class="cb">
           <dl class="kv"><dt>Сервер</dt><dd class="mono">${esc(st.base || '—')}</dd><dt>Пользователь</dt><dd class="mono">${esc(st.login || 'не задан')}</dd>
             <dt>Филиал</dt><dd class="mono">${esc(st.filial || 'определится при первой синхронизации')}</dd>
-            <dt>Последняя удачная</dt><dd>${lastOk ? `${fmtTs(lastOk.started)} · ${fmt(lastOk.stats.directory)} в каталоге, ${fmt(lastOk.stats.stockRows)} строк остатков, ${(lastOk.stats.ms / 1000).toFixed(1)} с` : '—'}</dd>
-            <dt>Что берём</dt><dd>каталог (артикул, название, тип, цена, единица, модель, место) и остатки выбранных статусов. Заказы клиентов и персональные данные не загружаются.</dd></dl>
+            <dt>Последняя удачная</dt><dd>${lastOk ? `${fmtTs(lastOk.started)} · ${fmt(lastOk.stats.directory)} в каталоге, ${fmt(lastOk.stats.stockRows)} строк остатков${lastOk.stats.dealers ? `, ${dealersText(lastOk.stats.dealers)}` : ''}, ${(lastOk.stats.ms / 1000).toFixed(1)} с` : '—'}</dd>
+            <dt>Что берём</dt><dd>каталог (артикул, название, тип, цена, единица, модель, место), остатки выбранных статусов и справочник дилеров (ID и название). Заказы клиентов и персональные данные не загружаются.</dd></dl>
         </div></div>
         <div class="card"><div class="ch"><h2>Настройки</h2></div><div class="cb" style="display:flex;flex-direction:column;gap:12px" id="settings"></div></div>
       </div>
@@ -54,9 +72,8 @@ sudo parts-yard carsale-sync      # первая синхронизация с �
     settingsForm();
     table(root.querySelector('#runs'), {
       columns: [{ key: 'started', label: 'Начало', mono: true }, { key: 'trigger', label: 'Как' }, { key: 'user', label: 'Кто' }, { key: 'status', label: 'Итог' }, { key: 'result', label: 'Результат' }],
-      rows: st.runs.map((r) => ({ ...r, trigger: TRIGGER[r.trigger] || r.trigger || '', user: r.user || '',
-        result: r.status === 'ok' && r.stats ? `новых ${r.stats.added}, обновлено ${r.stats.updated}, на складе ${fmt(r.stats.units)} шт, бронь ${fmt(r.stats.reserved)} шт · ${(r.stats.ms / 1000).toFixed(1)} с${r.stats.warnings && r.stats.warnings.length ? ' · ' + r.stats.warnings.join('; ') : ''}` : (r.error || '') })),
-      render: { status: (v) => (v === 'ok' ? '<span class="pill ok">успешно</span>' : v === 'running' ? '<span class="pill wait">идёт</span>' : '<span class="pill bad">ошибка</span>'), started: (v) => fmtTs(v) },
+      rows: st.runs.map((r) => ({ ...r, trigger: TRIGGER[r.trigger] || r.trigger || '', user: r.user || '', result: resultText(r) })),
+      render: { status: (v) => STATUS_PILL[v] || STATUS_PILL.error, started: (v) => fmtTs(v) },
       empty: 'Синхронизаций ещё не было',
     });
     root.querySelector('#sync')?.addEventListener('click', sync);
@@ -68,6 +85,7 @@ sudo parts-yard carsale-sync      # первая синхронизация с �
     const dis = isAdmin ? '' : 'disabled';
     const types = st.types.length ? st.types : ['A', 'B', 'C', 'D', 'TOOLS'];
     el.innerHTML = `<label class="check"><input type="checkbox" id="sen" ${S.enabled ? 'checked' : ''} ${dis}>Синхронизировать автоматически</label>
+      <label class="check"><input type="checkbox" id="sdl" ${S.dealers ? 'checked' : ''} ${dis}>Загружать и проверять справочник дилеров</label>
       <div class="grid2"><label class="field"><span>Каждые, минут</span><input class="in" id="sint" type="number" min="5" max="1440" value="${S.intervalMin}" ${dis}></label>
         <label class="field"><span>Вместимость ячейки для новых артикулов</span><input class="in" id="sper" type="number" min="1" value="${S.defaultPer}" ${dis}><span class="hint">Потом можно поправить в каталоге</span></label></div>
       <div class="field"><span>Какие остатки считать лежащими на складе</span><div class="row">${STATUSES.map(([id, n]) => `<label class="check"><input type="checkbox" class="sst" value="${id}" ${S.statusIds.includes(id) ? 'checked' : ''} ${dis}>${esc(n)}</label>`).join('')}</div></div>
@@ -82,7 +100,7 @@ sudo parts-yard carsale-sync      # первая синхронизация с �
       el.querySelectorAll('.szm').forEach((s) => { if (s.value) zoneMap[s.dataset.t] = s.value; });
       try {
         const r = await api('/api/integrations/carsale/settings', { method: 'PUT', body: {
-          enabled: el.querySelector('#sen').checked, intervalMin: Number(el.querySelector('#sint').value), defaultPer: Number(el.querySelector('#sper').value),
+          enabled: el.querySelector('#sen').checked, dealers: el.querySelector('#sdl').checked, intervalMin: Number(el.querySelector('#sint').value), defaultPer: Number(el.querySelector('#sper').value),
           statusIds: [...el.querySelectorAll('.sst:checked')].map((x) => Number(x.value)), storeIds: [...el.querySelectorAll('.sstore:checked')].map((x) => Number(x.value)),
           zoneMap, defaultZone: el.querySelector('#sdz').value } });
         st = r.status; toast('Настройки сохранены. Применятся при следующей синхронизации'); render();
@@ -96,7 +114,8 @@ sudo parts-yard carsale-sync      # первая синхронизация с �
     try {
       const r = await api('/api/integrations/carsale/sync', { method: 'POST' });
       const s = r.stats;
-      toast(`Готово: новых ${s.added}, обновлено ${s.updated}, на складе ${fmt(s.units)} шт`);
+      const parts = [s.added != null && `артикулов новых ${s.added}, обновлено ${s.updated}`, s.dealers && dealersText(s.dealers)].filter(Boolean);
+      toast(`${r.partial ? 'Частично' : 'Готово'}: ${parts.join('; ')}${r.partial ? ` · ${r.error}` : ''}`, !!r.partial);
       bus.dispatchEvent(new Event('changed'));
     } catch (e) { fail(e); }
     await load();

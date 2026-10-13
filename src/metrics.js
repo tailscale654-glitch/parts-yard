@@ -147,7 +147,8 @@ function createMetrics(db, L) {
         if (!r) return { value: '—', unit: '', sub: 'ещё не запускалась' };
         const min = Math.max(0, Math.round((Date.now() - new Date(r.started.replace(' ', 'T')).getTime()) / 60000));
         return { value: min < 60 ? min : Math.round(min / 60), unit: min < 60 ? 'мин назад' : 'ч назад',
-          sub: r.status === 'ok' ? 'успешно' : r.status === 'running' ? 'идёт сейчас' : `ошибка: ${String(r.error || '').slice(0, 60)}`, alert: r.status === 'error' };
+          sub: r.status === 'ok' ? 'успешно' : r.status === 'running' ? 'идёт сейчас' : r.status === 'partial' ? `частично: ${String(r.error || '').slice(0, 60)}` : `ошибка: ${String(r.error || '').slice(0, 60)}`,
+          alert: r.status === 'error' || r.status === 'partial' };
       },
     },
     carsale_diff: {

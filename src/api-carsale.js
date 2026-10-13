@@ -21,7 +21,7 @@ module.exports = function carsaleApi(api, { db, CS, need, h, WmsError }) {
       CS.schedule();
       audit(db, req.user.username, 'Синхронизация Carsale запущена вручную', r.ok ? r.stats : { error: r.error });
       if (!r.ok) return res.status(502).json({ ok: false, error: r.error, code: 'CARSALE_FAILED' });
-      res.json({ ok: true, stats: r.stats, status: CS.status() });
+      res.json({ ok: true, stats: r.stats, partial: !!r.partial, error: r.error || null, status: CS.status() });
     } catch (e) { next(e); }
   });
 

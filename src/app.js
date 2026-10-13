@@ -130,6 +130,7 @@ function createApp({ db, L, cfg }) {
   require('./api-insights')(api, ctx);
   require('./api-admin')(api, ctx);
   require('./api-carsale')(api, ctx);
+  require('./api-dealers')(api, ctx);
 
   api.post('/demo/reset', need('admin.settings'), (req, res) => {
     if (!cfg.demo) return res.status(403).json({ error: 'Сброс доступен только в демо-режиме (WMS_DEMO=1)', code: 'NOT_DEMO' });

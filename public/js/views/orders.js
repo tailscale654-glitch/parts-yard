@@ -2,12 +2,12 @@
 import { api, esc, can, icon, toast, fail, modal, confirmBox, table, progress, pageHead, fmtTs, bus, debounce, statusPill } from '../core.js';
 import { docForm } from './docform.js';
 
-export async function mount(root) {
-  let state = 'open', q = '', orders = [];
+export async function mount(root, { params = {} } = {}) {
+  let state = ['open', 'done', 'all'].includes(params.state) ? params.state : 'open', q = (params.q || '').trim().toLowerCase(), orders = [];
   root.innerHTML = `${pageHead('Заказы дилеров', 'Откройте заказ на карте склада: система построит маршрут отбора с минимумом точек.',
     can('docs.orders') ? `<button class="btn pri" id="new">${icon('plus')}Новый заказ</button>` : '')}
-    <div class="filters"><div class="seg" id="seg"><button type="button" data-s="open" aria-pressed="true">В работе</button><button type="button" data-s="done" aria-pressed="false">Закрытые</button><button type="button" data-s="all" aria-pressed="false">Все</button></div>
-      <label class="field" style="min-width:240px"><span>Поиск</span><input class="in" id="q" type="search" placeholder="Номер, дилер или артикул"></label></div>
+    <div class="filters"><div class="seg" id="seg">${[['open', 'В работе'], ['done', 'Закрытые'], ['all', 'Все']].map(([k, t]) => `<button type="button" data-s="${k}" aria-pressed="${k === state}">${t}</button>`).join('')}</div>
+      <label class="field" style="min-width:240px"><span>Поиск</span><input class="in" id="q" type="search" placeholder="Номер, дилер или артикул" value="${esc(params.q || '')}"></label></div>
     <div class="card"><div class="tw" id="tbl"></div></div>`;
   const status = (o) => (o.done ? (o.picked >= o.total ? 'собран' : 'с недостачей') : o.picked ? 'собирается' : 'ожидает');
   const late = (o) => {
@@ -24,6 +24,7 @@ export async function mount(root) {
       rows: list.map((o) => ({ ...o, status: status(o) })),
       empty: state === 'open' ? 'Все заказы собраны' : 'Заказов нет',
       render: {
+        dealer: (v, o) => `${esc(v)}${o.dealer_active === 0 ? ' <span class="note">нет в Carsale</span>' : ''}${o.dealer_region ? `<div class="note">${esc(o.dealer_region)}</div>` : ''}`,
         due: (v, o) => (v ? `<span class="${late(o) ? 'err' : ''}">${esc(v)}${late(o) ? ' · просрочен' : ''}</span>` : '<span class="muted">—</span>'),
         progress: (v, o) => progress(o.picked || 0, o.total || 0),
         status: (v) => statusPill(v),
@@ -56,6 +57,7 @@ export async function mount(root) {
     });
     const acts = [{ label: 'Закрыть окно' }];
     if (!o.done) acts.push({ label: 'Собрать на карте', kind: 'pri', onClick: () => { location.hash = `#/map?order=${o.id}`; } });
+    if (o.dealer_id) acts.unshift({ label: 'Карточка дилера', left: true, onClick: () => { location.hash = `#/dealers?open=${o.dealer_id}`; } });
     modal({ title: `Заказ ${o.number}`, sub: `${esc(o.dealer)} · создан ${fmtTs(o.created)}${o.due ? ' · срок ' + esc(o.due) : ''}`, wide: true, body, actions: acts });
   }
   async function load() {

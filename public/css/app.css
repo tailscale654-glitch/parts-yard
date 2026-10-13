@@ -551,3 +551,5 @@ table.t tbody tr:hover td{background:color-mix(in srgb,var(--accent) 6%,transpar
   .side{background:var(--surface)}
 }
 @media (hover:none){.search-trigger kbd{display:none}}
+.field .hint.err{color:var(--bad)}
+.dsync > span > svg{width:16px;height:16px;stroke:var(--accent);fill:none;stroke-width:2;stroke-linecap:round;vertical-align:-3px;margin-right:6px}

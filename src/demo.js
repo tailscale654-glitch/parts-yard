@@ -3,6 +3,7 @@
 // чтобы дашборды и отчёты сразу показывали что-то осмысленное.
 const crypto = require('crypto');
 const { hashPassword } = require('./auth');
+const { linkOrderDealers } = require('./dealers');
 
 const SKUS = [
   ['FO-15208', 'Фильтр масляный', 'A', 40, 60], ['FA-16546', 'Фильтр воздушный', 'A', 20, 30],
@@ -60,6 +61,8 @@ function seedDemo(db, L) {
     for (const t of ['inv_line', 'inv_task', 'order_line', 'orders', 'receipt', 'oplog', 'client_ops']) db.exec(`DELETE FROM ${t}`);
     db.exec('UPDATE cell SET sku = NULL, qty = 0, blocked = 0');
     db.exec('DELETE FROM sku');
+    // свои демо-дилеры пересоздаются из заказов ниже; дилеры из Carsale остаются
+    db.exec("DELETE FROM dealer WHERE source = 'local'");
     const zones = new Set(L.zones.map((z) => z.id));
     const skus = SKUS.filter((s) => zones.has(s[2]));
     const insSku = db.prepare('INSERT INTO sku(art, name, zone, per, min_qty) VALUES (?,?,?,?,?)');
@@ -211,6 +214,7 @@ function seedDemo(db, L) {
         insLine.run(tid, a, c.sku, exp, c.sku ? c.qty : 0, pick(staff), stamp(new Date(t.getTime() + i * 60000)));
       });
     }
+    linkOrderDealers(db);
     db.prepare("INSERT INTO oplog(ts, op, kind, user) VALUES (?, 'Демо-данные загружены', 'system', 'система')").run(nowStr);
     db.exec("UPDATE meta SET v = v + 1 WHERE k = 'rev'");
   })();

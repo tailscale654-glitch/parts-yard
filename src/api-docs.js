@@ -1,6 +1,7 @@
 'use strict';
 // Каталог, поставки, заказы, инвентаризация.
 const { now, audit } = require('./db');
+const { resolveDealer } = require('./dealers');
 
 const ART_RE = /^[\p{L}\p{N}][\p{L}\p{N}._\-/]{0,39}$/u;
 
@@ -137,8 +138,9 @@ module.exports = function docsApi(api, { db, L, INV, need, h, mutation, WmsError
     let where = '';
     if (state === 'open') where = 'WHERE o.done = 0';
     if (state === 'done') where = 'WHERE o.done = 1';
-    const orders = db.prepare(`SELECT o.*, SUM(l.qty) AS total, SUM(l.picked) AS picked, COUNT(l.id) AS line_count
-      FROM orders o LEFT JOIN order_line l ON l.order_id = o.id ${where} GROUP BY o.id
+    const orders = db.prepare(`SELECT o.*, SUM(l.qty) AS total, SUM(l.picked) AS picked, COUNT(l.id) AS line_count,
+        d.region AS dealer_region, d.code AS dealer_code, d.source AS dealer_source, d.active AS dealer_active
+      FROM orders o LEFT JOIN order_line l ON l.order_id = o.id LEFT JOIN dealer d ON d.id = o.dealer_id ${where} GROUP BY o.id
       ORDER BY o.done, COALESCE(NULLIF(o.due,''),'99:99'), o.id DESC LIMIT 300`).all();
     const lines = db.prepare(`SELECT l.*, s.name, COALESCE((SELECT SUM(qty) FROM cell c WHERE c.sku = l.art AND c.blocked = 0), 0) AS stock
       FROM order_line l LEFT JOIN sku s ON s.art = l.art WHERE l.order_id = ? ORDER BY l.id`);
@@ -146,21 +148,28 @@ module.exports = function docsApi(api, { db, L, INV, need, h, mutation, WmsError
     return { orders };
   }));
   api.post('/orders', need('docs.orders'), h((req) => {
-    const number = text(req.body.number, 40), dealer = text(req.body.dealer, 120), due = text(req.body.due, 16);
+    const number = text(req.body.number, 40), dealerName = text(req.body.dealer, 120), due = text(req.body.due, 16);
+    const dealerId = req.body.dealer_id == null || req.body.dealer_id === '' ? null : Number(req.body.dealer_id);
     if (!number) throw new WmsError(400, 'NO_NUMBER', 'Укажите номер заказа');
-    if (!dealer) throw new WmsError(400, 'NO_DEALER', 'Укажите дилера');
+    if (!dealerName && !dealerId) throw new WmsError(400, 'NO_DEALER', 'Укажите дилера');
     if (due && !/^\d{1,2}:\d{2}$/.test(due)) throw new WmsError(400, 'BAD_DUE', 'Срок — время в формате 15:00');
     if (db.prepare('SELECT 1 FROM orders WHERE number = ?').get(number)) throw new WmsError(409, 'ORDER_EXISTS', `Заказ ${number} уже есть`);
     const lines = checkLines(req.body.lines);
+    let newDealer = false;
     const id = db.transaction(() => {
-      const oid = db.prepare('INSERT INTO orders(number, dealer, due, created) VALUES (?,?,?,?)').run(number, dealer, due, now()).lastInsertRowid;
+      // дилер из справочника; если такого ещё нет — заводим своего, чтобы заказы по нему собирались вместе
+      const before = db.prepare('SELECT MAX(id) FROM dealer').pluck().get() || 0;
+      const d = resolveDealer(db, { id: dealerId, name: dealerName });
+      if (!d) throw new WmsError(400, 'NO_DEALER', 'Дилер не найден — выберите из списка');
+      newDealer = d.id > before;
+      const oid = db.prepare('INSERT INTO orders(number, dealer, dealer_id, due, created) VALUES (?,?,?,?,?)').run(number, d.name, d.id, due, now()).lastInsertRowid;
       const ins = db.prepare('INSERT INTO order_line(order_id, art, qty) VALUES (?,?,?)');
       for (const l of lines) ins.run(oid, l.art, l.qty);
       oplog.run(now(), 'Заказ создан', 'doc', lines.length, req.user.username, number);
       bump();
       return oid;
     })();
-    return { ok: true, id, number };
+    return { ok: true, id, number, newDealer };
   }));
   api.delete('/orders/:id(\\d+)', need('docs.orders'), h((req) => {
     const o = db.prepare('SELECT * FROM orders WHERE id = ?').get(+req.params.id);
