@@ -1,7 +1,7 @@
 // Оболочка WarehouseOS: меню по правам, маршруты, опрос сервера, профиль.
 import { S, can, api, esc, icon, h, toast, fail, modal, bus } from './core.js';
 
-const V = '?v=3';
+const V = '?v=4';
 const ROUTES = [
   { grp: 'Обзор' },
   { path: 'dashboard', title: 'Дашборды', icon: 'dash', perm: ['dashboard.view'], mod: './views/dashboard.js' },
@@ -50,11 +50,22 @@ export function applyBrand(b) {
   const sub = document.getElementById('whSub');
   sub.textContent = b.subtitle || '';
   sub.hidden = !b.subtitle;
-  document.getElementById('hero').style.backgroundImage = `url("/brand/photo?v=${encodeURIComponent(b.v)}")`;
+  document.documentElement.style.setProperty('--photo', `url("/brand/photo?v=${encodeURIComponent(b.v)}")`);
   const wm = document.getElementById('wordmark');
   if (b.hasLogo) wm.innerHTML = `<img src="/brand/logo?v=${encodeURIComponent(b.v)}" alt="${esc(b.line1 || 'Логотип')}">`;
   else wm.innerHTML = `${b.line1 ? `<span class="l1">${esc(b.line1)}</span>` : ''}${b.line1 && b.line2 ? '<span class="bar"></span>' : ''}${b.line2 ? `<span class="l2">${esc(b.line2)}</span>` : ''}`;
   wm.hidden = !b.hasLogo && !b.line1 && !b.line2;
+  fitWordmark();
+  if (document.fonts && document.fonts.ready) document.fonts.ready.then(fitWordmark);
+}
+
+// подпись бренда всегда помещается в ширину меню: уменьшаем шрифт, пока не влезет
+function fitWordmark() {
+  const wm = document.getElementById('wordmark');
+  if (!wm || wm.hidden || wm.querySelector('img')) return;
+  let k = 1;
+  wm.style.setProperty('--wm', k);
+  while (wm.scrollWidth > wm.clientWidth + 1 && k > 0.55) { k -= 0.04; wm.style.setProperty('--wm', k.toFixed(2)); }
 }
 
 function paintBadges() {

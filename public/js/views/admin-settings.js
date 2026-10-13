@@ -45,7 +45,7 @@ export async function mount(root) {
           <span class="hint">PNG с прозрачным фоном, по ширине до 800 px. Показывается в меню и на странице входа вместо подписи</span></div>
         <div class="field"><span>Фото здания</span><div class="row"><div style="width:220px;aspect-ratio:2/1;max-width:100%;border-radius:6px;background:center/cover url('/brand/photo?v=${esc(S.settings.v)}');border:1px solid var(--line)"></div>
           <button class="btn sm" id="photoUp">${icon('upload')}Заменить</button>${S.settings.customPhoto ? '<button class="btn sm ghost" id="photoDel">Вернуть стандартное</button>' : ''}</div>
-          <span class="hint">Шапка меню и левая половина страницы входа. Лучше широкое фото, здание по центру</span></div>
+          <span class="hint">Фон всех страниц системы и левая половина страницы входа. Лучше широкое фото, здание по центру</span></div>
       </div></div>
       <div class="card"><div class="ch"><h2>Сервер</h2></div><div class="cb" style="display:flex;flex-direction:column;gap:12px">
         <dl class="kv"><dt>Версия</dt><dd class="mono">WarehouseOS ${esc(s.version)} · схема БД ${s.schema}</dd><dt>Node.js</dt><dd class="mono">${esc(s.node)}</dd>

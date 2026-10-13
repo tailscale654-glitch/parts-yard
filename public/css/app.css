@@ -11,6 +11,7 @@
   --s1:#0E8FA3; --s2:#4F7FC2; --s3:#E0A230; --s4:#7C8A92;
   --side-bg:#24292C; --side-ink:#E3E7EA; --side-muted:#8F999F; --side-line:#353C40; --side-hover:#2E3539;
   --shadow:0 12px 32px rgba(32,38,42,.16);
+  --veil-top:rgba(236,238,240,.42); --veil-bottom:rgba(236,238,240,.74);
   --font-ui:"Onest",system-ui,-apple-system,"Segoe UI",sans-serif;
   --font-brand:"Michroma","Eurostile","Microgramma","Onest",sans-serif;
   --font-mono:"JetBrains Mono",ui-monospace,"SFMono-Regular",Menlo,monospace;
@@ -24,7 +25,7 @@
   --ok:#5DBB84; --warn:#E39A52; --bad:#EE7461; --info:#7FB2D6;
   --s1:#2FAFC2; --s2:#7FA6DE; --s3:#E8B450; --s4:#8E9AA1;
   --side-bg:#101416; --side-ink:#E3E7EA; --side-muted:#7D878D; --side-line:#22292D; --side-hover:#1A2023;
-  --shadow:0 12px 32px rgba(0,0,0,.5); color-scheme:dark}}
+  --shadow:0 12px 32px rgba(0,0,0,.5); --veil-top:rgba(20,24,27,.55); --veil-bottom:rgba(20,24,27,.84); color-scheme:dark}}
 :root[data-theme="dark"]{
   --bg:#14181B; --surface:#1B2024; --surface2:#22282D; --ink:#E5E9EC; --muted:#96A1A8; --line:#30383E;
   --accent:#2FAFC2; --accent-hover:#47BED0; --accent-ink:#0B1417; --accent-soft:#12343B;
@@ -34,7 +35,7 @@
   --ok:#5DBB84; --warn:#E39A52; --bad:#EE7461; --info:#7FB2D6;
   --s1:#2FAFC2; --s2:#7FA6DE; --s3:#E8B450; --s4:#8E9AA1;
   --side-bg:#101416; --side-ink:#E3E7EA; --side-muted:#7D878D; --side-line:#22292D; --side-hover:#1A2023;
-  --shadow:0 12px 32px rgba(0,0,0,.5); color-scheme:dark}
+  --shadow:0 12px 32px rgba(0,0,0,.5); --veil-top:rgba(20,24,27,.55); --veil-bottom:rgba(20,24,27,.84); color-scheme:dark}
 
 *{box-sizing:border-box}
 html,body{height:100%}
@@ -52,17 +53,18 @@ h1,h2,h3{text-wrap:balance}
 .shell{display:grid;grid-template-columns:240px minmax(0,1fr);min-height:100%}
 .side{background:var(--side-bg);color:var(--side-ink);display:flex;flex-direction:column;position:sticky;top:0;height:100vh;overflow-y:auto;
   border-right:1px solid var(--side-line)}
-/* фото здания */
-.hero{height:104px;flex:none;background:var(--side-hover) center 46%/cover no-repeat;position:relative}
-.hero::after{content:"";position:absolute;inset:0;background:linear-gradient(180deg,rgba(16,20,22,0) 40%,rgba(16,20,22,.55))}
+/* фото здания — фон рабочей области под светлой вуалью, чтобы текст и таблицы оставались читаемыми */
+.stage{min-width:0;min-height:100vh;background-color:var(--bg);
+  background-image:linear-gradient(180deg,var(--veil-top),var(--veil-bottom)),var(--photo,none);
+  background-size:cover;background-position:center 38%;background-attachment:fixed;background-repeat:no-repeat}
 /* светлая «фасадная» панель с вывеской: горизонтальные швы облицовки, как на здании */
-.sign{background:var(--facade);color:var(--charcoal);padding:12px 14px 11px;display:flex;flex-direction:column;gap:7px;flex:none;
+.sign{background:var(--facade);color:var(--charcoal);padding:16px 14px 13px;display:flex;flex-direction:column;gap:7px;flex:none;
   background-image:repeating-linear-gradient(180deg,transparent 0 25px,var(--facade-line) 25px 26px)}
-.wordmark{display:flex;align-items:center;gap:8px;min-height:22px}
+.wordmark{display:flex;align-items:center;gap:8px;min-height:22px;min-width:0;max-width:100%;overflow:hidden;--wm:1}
 .wordmark img{max-height:34px;max-width:100%;display:block}
-.wordmark .l1{font:400 12px/1 var(--font-brand);color:var(--brand-red);letter-spacing:.02em;white-space:nowrap}
-.wordmark .bar{width:2px;height:15px;background:var(--charcoal);border-radius:1px;flex:none}
-.wordmark .l2{font:400 11.5px/1 var(--font-brand);letter-spacing:.24em;color:var(--charcoal);white-space:nowrap}
+.wordmark .l1{font:400 calc(13px * var(--wm))/1 var(--font-brand);color:var(--brand-red);letter-spacing:.02em;white-space:nowrap}
+.wordmark .bar{width:2px;height:calc(16px * var(--wm));background:var(--charcoal);border-radius:1px;flex:none}
+.wordmark .l2{font:400 calc(12px * var(--wm))/1 var(--font-brand);letter-spacing:.2em;color:var(--charcoal);white-space:nowrap}
 .sign .wh{font-weight:600;font-size:13.5px;line-height:1.25}
 .sign .sub{font-size:11.5px;color:#5C6266;margin-top:-5px}
 .sign .os{font:600 9.5px var(--font-mono);letter-spacing:.16em;color:#0A798D;text-transform:uppercase}
@@ -90,6 +92,8 @@ main{min-width:0;padding:20px 24px 40px;display:flex;flex-direction:column;gap:1
 .page-h{display:flex;flex-wrap:wrap;gap:10px 16px;align-items:flex-end;justify-content:space-between}
 .page-h h1{margin:0;font-size:21px;font-weight:700;letter-spacing:-.01em}
 .page-h p{margin:3px 0 0;color:var(--muted);font-size:13px;max-width:70ch}
+.stage .page-h h1,.stage .page-h p{text-shadow:0 0 12px var(--bg),0 0 2px var(--bg)}
+.stage .filters > .field > span,.stage .filters > .check{text-shadow:0 0 8px var(--bg),0 0 2px var(--bg)}
 .actions{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
 
 @media (max-width:900px){
