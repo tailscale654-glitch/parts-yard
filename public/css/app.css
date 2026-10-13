@@ -1,6 +1,7 @@
 /* WarehouseOS · JAC Motors Toshkent
-   Layout: тёмная колонка меню цвета оконных рам; сверху — фото здания и светлая «фасадная» панель с подписью,
-   как вывеска на фасаде; рабочее поле — светлый серый фасад. Бирюза JAC — действия, красный — только бренд и маршрут. */
+   Layout: как приложения Apple — фото здания на весь экран под вуалью, полупрозрачная боковая панель с размытием,
+   белые карточки с тонкой тенью. Шрифты системные: SF Pro для интерфейса, New York для крупных заголовков
+   (на Windows — Segoe UI и Georgia). Бирюза JAC — действия, красный — только бренд и маршрут. */
 :root{
   --bg:#ECEEF0; --surface:#FBFBFC; --surface2:#F1F3F5; --ink:#20262A; --muted:#5D666D; --line:#D6DADE;
   --accent:#0A798D; --accent-hover:#086879; --accent-ink:#FFFFFF; --accent-soft:#DDEFF2;
@@ -12,9 +13,14 @@
   --side-bg:#24292C; --side-ink:#E3E7EA; --side-muted:#8F999F; --side-line:#353C40; --side-hover:#2E3539;
   --shadow:0 12px 32px rgba(32,38,42,.16);
   --veil-top:rgba(236,238,240,.42); --veil-bottom:rgba(236,238,240,.74);
-  --font-ui:"Onest",system-ui,-apple-system,"Segoe UI",sans-serif;
-  --font-brand:"Michroma","Eurostile","Microgramma","Onest",sans-serif;
-  --font-mono:"JetBrains Mono",ui-monospace,"SFMono-Regular",Menlo,monospace;
+  --font-ui:-apple-system,BlinkMacSystemFont,"SF Pro Text","SF Pro",system-ui,"Segoe UI Variable Text","Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;
+  --font-display:ui-serif,"New York","NewYork",-apple-system-ui-serif,"Iowan Old Style",Charter,Georgia,"Times New Roman",serif;
+  --font-brand:-apple-system,BlinkMacSystemFont,"SF Pro Display",system-ui,"Segoe UI Variable Display","Segoe UI",Roboto,Arial,sans-serif;
+  --font-mono:ui-monospace,"SF Mono",SFMono-Regular,Menlo,Consolas,"Cascadia Mono","Liberation Mono",monospace;
+  --radius:12px; --radius-sm:8px;
+  --hair:0 0 0 .5px rgba(32,38,42,.10); --lift:0 1px 2px rgba(32,38,42,.06),0 0 0 .5px rgba(32,38,42,.08);
+  --glass:rgba(246,247,248,.72); --glass-line:rgba(32,38,42,.10); --fill:rgba(118,118,128,.12); --fill-strong:rgba(118,118,128,.20);
+  --ring:0 0 0 4px color-mix(in srgb,var(--accent) 28%,transparent);
 }
 @media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
   --bg:#14181B; --surface:#1B2024; --surface2:#22282D; --ink:#E5E9EC; --muted:#96A1A8; --line:#30383E;
@@ -25,7 +31,8 @@
   --ok:#5DBB84; --warn:#E39A52; --bad:#EE7461; --info:#7FB2D6;
   --s1:#2FAFC2; --s2:#7FA6DE; --s3:#E8B450; --s4:#8E9AA1;
   --side-bg:#101416; --side-ink:#E3E7EA; --side-muted:#7D878D; --side-line:#22292D; --side-hover:#1A2023;
-  --shadow:0 12px 32px rgba(0,0,0,.5); --veil-top:rgba(20,24,27,.55); --veil-bottom:rgba(20,24,27,.84); color-scheme:dark}}
+  --shadow:0 12px 32px rgba(0,0,0,.5); --veil-top:rgba(20,24,27,.55); --veil-bottom:rgba(20,24,27,.84); --hair:0 0 0 .5px rgba(255,255,255,.10); --lift:0 1px 2px rgba(0,0,0,.4),0 0 0 .5px rgba(255,255,255,.08);
+  --glass:rgba(28,32,35,.70); --glass-line:rgba(255,255,255,.08); --fill:rgba(118,118,128,.24); --fill-strong:rgba(118,118,128,.34); color-scheme:dark}}
 :root[data-theme="dark"]{
   --bg:#14181B; --surface:#1B2024; --surface2:#22282D; --ink:#E5E9EC; --muted:#96A1A8; --line:#30383E;
   --accent:#2FAFC2; --accent-hover:#47BED0; --accent-ink:#0B1417; --accent-soft:#12343B;
@@ -35,7 +42,8 @@
   --ok:#5DBB84; --warn:#E39A52; --bad:#EE7461; --info:#7FB2D6;
   --s1:#2FAFC2; --s2:#7FA6DE; --s3:#E8B450; --s4:#8E9AA1;
   --side-bg:#101416; --side-ink:#E3E7EA; --side-muted:#7D878D; --side-line:#22292D; --side-hover:#1A2023;
-  --shadow:0 12px 32px rgba(0,0,0,.5); --veil-top:rgba(20,24,27,.55); --veil-bottom:rgba(20,24,27,.84); color-scheme:dark}
+  --shadow:0 12px 32px rgba(0,0,0,.5); --veil-top:rgba(20,24,27,.55); --veil-bottom:rgba(20,24,27,.84); --hair:0 0 0 .5px rgba(255,255,255,.10); --lift:0 1px 2px rgba(0,0,0,.4),0 0 0 .5px rgba(255,255,255,.08);
+  --glass:rgba(28,32,35,.70); --glass-line:rgba(255,255,255,.08); --fill:rgba(118,118,128,.24); --fill-strong:rgba(118,118,128,.34); color-scheme:dark}
 
 *{box-sizing:border-box}
 html,body{height:100%}
@@ -364,3 +372,174 @@ table.steps td.r,table.steps th.r{text-align:right}
 .zstat{display:grid;grid-template-columns:28px 1fr 46px;gap:8px;align-items:center;font-size:12.5px}
 .zstat .bar{height:8px}
 input.qty{width:80px;padding:6px 8px;border:1px solid var(--line);border-radius:6px;background:var(--bg)}
+
+
+/* ================= Apple HIG: типографика, стекло, элементы управления =================
+   Этот блок идёт последним и уточняет базовые правила выше. */
+body{font:14px/1.45 var(--font-ui);-webkit-font-smoothing:antialiased;-moz-osx-font-smoothing:grayscale;letter-spacing:-.003em;
+  background-color:var(--bg);background-image:linear-gradient(180deg,var(--veil-top),var(--veil-bottom)),var(--photo,none);
+  background-size:cover;background-position:center 38%;background-attachment:fixed;background-repeat:no-repeat}
+.stage{background:none}
+:focus-visible{outline:none;box-shadow:var(--ring)}
+
+/* боковая панель — матовое стекло поверх фото */
+.side{background:var(--glass);-webkit-backdrop-filter:saturate(180%) blur(28px);backdrop-filter:saturate(180%) blur(28px);
+  color:var(--ink);border-right:.5px solid var(--glass-line)}
+.sign{background:none;color:var(--ink);padding:20px 18px 12px;gap:6px}
+.wordmark .l1{font:800 calc(14px * var(--wm))/1 var(--font-brand);letter-spacing:-.01em}
+.wordmark .l2{font:500 calc(12.5px * var(--wm))/1 var(--font-brand);letter-spacing:.32em;color:var(--ink)}
+.wordmark .bar{background:var(--ink);opacity:.8}
+.sign .os{font:600 10.5px var(--font-ui);letter-spacing:.02em;color:var(--accent);text-transform:none}
+.sign .wh{font:600 19px/1.15 var(--font-display);letter-spacing:-.01em;margin-top:4px}
+.sign .sub{font-size:12.5px;color:var(--muted);margin-top:-2px}
+.brandline{height:2px;margin:6px 18px 4px;border-radius:2px}
+.search-trigger{margin:8px 12px 2px;display:flex;align-items:center;gap:8px;padding:7px 10px;border:0;border-radius:var(--radius-sm);background:var(--fill);
+  color:var(--muted);font-size:13px;text-align:left}
+.search-trigger:hover{background:var(--fill-strong)}
+.search-trigger svg{width:15px;height:15px;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round}
+.search-trigger kbd{margin-left:auto;font:500 11px var(--font-ui);color:var(--muted);background:var(--surface);border-radius:5px;padding:1px 6px;box-shadow:var(--hair)}
+nav.menu{padding:6px 10px 16px}
+nav.menu .grp{font:600 11.5px var(--font-ui);text-transform:none;letter-spacing:0;color:var(--muted);padding:16px 10px 6px}
+nav.menu a{color:var(--ink);border-radius:var(--radius-sm);padding:7px 10px;font-size:14px}
+nav.menu a:hover{background:var(--fill)}
+nav.menu a.on{background:var(--accent);color:var(--accent-ink)}
+nav.menu a.on::before{display:none}
+nav.menu a.on svg{color:var(--accent-ink)}
+nav.menu svg{color:var(--accent);opacity:1}
+nav.menu .badge{font:600 11px var(--font-ui);background:var(--fill-strong);color:var(--ink);border-radius:999px;padding:1px 7px}
+nav.menu a.on .badge{background:rgba(255,255,255,.25);color:var(--accent-ink)}
+.me{border-top:.5px solid var(--glass-line)}
+.me .role,.conn{color:var(--muted)}
+.me button{color:var(--muted)}
+.me button:hover{color:var(--ink)}
+
+/* заголовки страниц — крупный заголовок New York, как Large Title */
+main{padding:28px 32px 48px;gap:18px}
+.page-h h1{font:600 30px/1.1 var(--font-display);letter-spacing:-.015em}
+.page-h p{font-size:14px;margin-top:6px}
+.stage .page-h h1,.stage .page-h p,.stage .filters > .field > span,.stage .filters > .check{text-shadow:none}
+
+/* поверхности */
+.card,.w,.mkpi,.panel,.mapwrap,.list,.mcard{border:0;border-radius:var(--radius);box-shadow:var(--lift)}
+.card > .ch{border-bottom:.5px solid var(--line);padding:12px 16px}
+.card > .ch h2,.card > .ch h3,.maphead h2{font:600 15px var(--font-ui);text-transform:none;letter-spacing:-.005em;color:var(--ink)}
+.card > .cb{padding:14px 16px}
+.w{padding:14px 16px}
+.w h3,.sec h3,.metric-pick h4,.rep-list .grp,.perm-grid legend{font-weight:600;font-size:12.5px;text-transform:none;letter-spacing:0;color:var(--muted)}
+.w:not(.editing) h3{padding-right:0}
+.kpiv .v{font:600 34px/1 var(--font-ui);letter-spacing:-.02em}
+.kpiv .v small{font-size:15px}
+.mkpi{padding:10px 14px}
+.mkpi b{font:600 20px var(--font-ui);font-variant-numeric:tabular-nums;letter-spacing:-.01em}
+.mkpi span{font-size:12px;text-transform:none;letter-spacing:0}
+.empty b{font:600 18px var(--font-display)}
+
+/* кнопки и поля как в macOS/iOS */
+.btn{border:0;border-radius:var(--radius-sm);padding:7px 14px;min-height:34px;background:var(--surface);box-shadow:var(--lift);font-weight:500;font-size:13.5px;
+  transition:background .15s,box-shadow .15s,transform .05s}
+.btn:hover{border:0;background:var(--surface2)}
+.btn:active{transform:scale(.98)}
+.btn.pri{box-shadow:none}
+.btn.pri:hover{background:var(--accent-hover)}
+.btn.ghost{box-shadow:none;background:none}
+.btn.ghost:hover{background:var(--fill)}
+.btn.danger{color:var(--bad)}
+.btn.sm{min-height:28px;padding:4px 10px;font-size:12.5px}
+input.in,select.in,textarea.in{border:0;border-radius:var(--radius-sm);background:var(--fill);padding:8px 11px;min-height:36px;transition:box-shadow .15s,background .15s}
+input.in:focus,select.in:focus,textarea.in:focus{background:var(--surface);box-shadow:var(--ring);outline:none}
+input.in.sm,select.in.sm{min-height:30px}
+.field{font-size:13px}
+.field > span{color:var(--ink);font-weight:500}
+.field .hint{color:var(--muted)}
+.check input{accent-color:var(--accent);width:17px;height:17px}
+
+/* сегментированный переключатель */
+.seg{border:0;border-radius:9px;background:var(--fill);padding:2px;gap:2px;overflow:visible}
+.seg button{border-radius:7px;padding:5px 12px;color:var(--ink);font-weight:500}
+.seg button+button{border-left:0}
+.seg button[aria-pressed="true"]{background:var(--surface);color:var(--ink);box-shadow:0 1px 3px rgba(0,0,0,.12),0 0 0 .5px rgba(0,0,0,.04)}
+.dash-tabs{background:var(--fill);border-radius:9px;padding:2px;display:inline-flex;align-self:flex-start;max-width:100%;overflow-x:auto}
+.dash-tabs button.tab{border:0;border-radius:7px;padding:5px 14px;color:var(--ink);white-space:nowrap}
+.dash-tabs button.tab[aria-selected="true"]{background:var(--surface);box-shadow:0 1px 3px rgba(0,0,0,.12)}
+.ptabs{padding:4px 6px 0}
+.ptabs button{border-bottom-width:2px}
+
+/* таблицы */
+table.t{font-size:13.5px}
+table.t th{font-size:12px;font-weight:600;text-transform:none;letter-spacing:0;color:var(--muted);border-bottom:.5px solid var(--line)}
+table.t td{border-bottom:.5px solid var(--line);padding:9px 10px}
+table.t tbody tr:hover td{background:color-mix(in srgb,var(--accent) 6%,transparent)}
+.pill{border-radius:999px;padding:2px 9px;font-weight:600}
+.chip{border:0;background:var(--fill);border-radius:6px;padding:3px 7px}
+.chip:hover{background:var(--fill-strong)}
+.bar{border-radius:999px}
+
+/* модальные окна — как листы macOS */
+.modal-back{background:rgba(0,0,0,.28);-webkit-backdrop-filter:blur(6px);backdrop-filter:blur(6px)}
+.modal{border-top:0;border-radius:16px;box-shadow:0 24px 60px rgba(0,0,0,.25),0 0 0 .5px rgba(0,0,0,.1);animation:sheet .18s ease-out}
+.modal header{padding:18px 20px 8px}
+.modal header h2{font:600 21px/1.2 var(--font-display);letter-spacing:-.01em}
+.modal .mb{padding:6px 20px 16px}
+.modal footer{border-top:.5px solid var(--line);padding:12px 20px}
+@keyframes sheet{from{opacity:0;transform:translateY(8px) scale(.985)}to{opacity:1;transform:none}}
+.toast{border-radius:12px;padding:10px 16px;background:color-mix(in srgb,var(--ink) 88%,transparent);-webkit-backdrop-filter:blur(12px);backdrop-filter:blur(12px)}
+
+/* скелет загрузки */
+.sk{height:52px;border-radius:8px;background:linear-gradient(90deg,var(--fill) 0%,var(--fill-strong) 50%,var(--fill) 100%);background-size:200% 100%;animation:sk 1.2s linear infinite}
+@keyframes sk{from{background-position:200% 0}to{background-position:-200% 0}}
+
+/* быстрый поиск ⌘K */
+.palette-back{position:fixed;inset:0;z-index:85;background:rgba(0,0,0,.22);-webkit-backdrop-filter:blur(4px);backdrop-filter:blur(4px);
+  display:flex;justify-content:center;align-items:flex-start;padding:12vh 16px 16px}
+.palette{width:min(640px,100%);background:var(--surface);border-radius:16px;box-shadow:0 24px 60px rgba(0,0,0,.28),0 0 0 .5px rgba(0,0,0,.1);overflow:hidden;animation:sheet .14s ease-out}
+.palette .pin{display:flex;align-items:center;gap:10px;padding:14px 16px;border-bottom:.5px solid var(--line)}
+.palette .pin svg{width:18px;height:18px;stroke:var(--muted);fill:none;stroke-width:2;stroke-linecap:round;flex:none}
+.palette input{flex:1;border:0;background:none;font-size:18px;outline:none;color:var(--ink);min-width:0}
+.palette input:focus{box-shadow:none}
+.palette .res{max-height:min(420px,60vh);overflow-y:auto;padding:6px}
+.palette .grp{font-size:12px;font-weight:600;color:var(--muted);padding:8px 10px 4px}
+.palette .it{display:flex;align-items:center;gap:10px;width:100%;border:0;background:none;text-align:left;padding:9px 10px;border-radius:9px;color:var(--ink)}
+.palette .it svg{width:17px;height:17px;stroke:var(--accent);fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round;flex:none}
+.palette .it .t1{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.palette .it .t2{color:var(--muted);font-size:12.5px;white-space:nowrap}
+.palette .it[aria-selected="true"]{background:var(--accent);color:var(--accent-ink)}
+.palette .it[aria-selected="true"] svg,.palette .it[aria-selected="true"] .t2{stroke:var(--accent-ink);color:var(--accent-ink)}
+.palette .foot{display:flex;gap:14px;padding:8px 14px;border-top:.5px solid var(--line);font-size:12px;color:var(--muted)}
+.palette kbd{font:500 11px var(--font-ui);background:var(--fill);border-radius:4px;padding:0 5px}
+.palette .it .t3{color:var(--muted);font-size:12px;margin-left:4px}
+.palette .it[aria-selected="true"] .t3{color:var(--accent-ink);opacity:.85}
+.palette mark{background:none;color:inherit;font-weight:700}
+.palette .pin kbd{flex:none}
+.palette .none{padding:28px 16px;text-align:center;color:var(--muted)}
+.palette .pcancel{display:none;border:0;background:none;color:var(--accent);font:500 16px var(--font-ui);padding:4px 0;flex:none}
+@media (hover:none),(max-width:600px){
+  .palette-back{padding:10px 10px 16px}
+  .palette .pin kbd,.palette .foot{display:none}
+  .palette .pcancel{display:block}
+  .palette .res{max-height:min(520px,70vh)}
+}
+.palette .foot .mono{font-size:11px}
+
+/* телефон: нижняя панель вкладок, как в iOS */
+.tabbar{display:none}
+@media (max-width:900px){
+  main{padding:18px 16px calc(84px + env(safe-area-inset-bottom,0px))}
+  .page-h h1{font-size:26px}
+  .topbar{background:var(--glass);-webkit-backdrop-filter:saturate(180%) blur(24px);backdrop-filter:saturate(180%) blur(24px);color:var(--ink);
+    border-bottom:.5px solid var(--glass-line)}
+  .topbar b{font:600 16px var(--font-ui);opacity:0;transition:opacity .18s}
+  body.scrolled .topbar b{opacity:1}
+  .topbar .search-trigger{margin:0 0 0 auto;padding:7px 9px;background:var(--fill);color:var(--ink);border-radius:999px}
+  .topbar .search-trigger span,.topbar .search-trigger kbd{display:none}
+  .tabbar{display:flex;position:fixed;left:0;right:0;bottom:0;z-index:35;background:color-mix(in srgb,var(--surface) 88%,transparent);-webkit-backdrop-filter:saturate(180%) blur(24px);
+    backdrop-filter:saturate(180%) blur(24px);border-top:.5px solid var(--glass-line);padding:6px 4px calc(6px + env(safe-area-inset-bottom,0px))}
+  .tabbar a,.tabbar button{flex:1;display:flex;flex-direction:column;align-items:center;gap:2px;border:0;background:none;color:var(--muted);text-decoration:none;
+    font-size:10.5px;font-weight:500;padding:4px 0;min-width:0}
+  .tabbar svg{width:23px;height:23px;stroke:currentColor;fill:none;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}
+  .tabbar .on{color:var(--accent)}
+  .tabbar a{position:relative}
+  .tabbar .tb-badge{position:absolute;top:0;left:calc(50% + 5px);min-width:17px;height:17px;padding:0 5px;border-radius:999px;background:var(--brand-red,#D41031);
+    color:#fff;font:600 10.5px/17px var(--font-ui);font-style:normal;text-align:center;box-shadow:0 0 0 2px var(--surface)}
+  .tabbar span{max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .side{background:var(--surface)}
+}

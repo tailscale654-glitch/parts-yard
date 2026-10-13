@@ -54,7 +54,7 @@ export async function mount(root, { rest }) {
     return `<div class="wgrid">${d.widgets.map((w, i) => `<section class="w w${w.w}${editing ? ' editing' : ''}" data-i="${i}" ${editing ? 'draggable="true"' : ''}>
       <h3>${esc(wTitle(w))}${paramNote(w) ? ` <span style="text-transform:none;letter-spacing:0;font-weight:400">· ${esc(paramNote(w))}</span>` : ''}</h3>
       ${editing ? `<div class="wtools"><button type="button" data-t="narrow" title="Уже" aria-label="Сделать уже">${icon('narrower')}</button><button type="button" data-t="wide" title="Шире" aria-label="Сделать шире">${icon('wider')}</button><button type="button" data-t="left" title="Раньше" aria-label="Переместить раньше">${icon('left')}</button><button type="button" data-t="right" title="Позже" aria-label="Переместить позже">${icon('right')}</button><button type="button" data-t="edit" title="Настроить" aria-label="Настроить">${icon('edit')}</button><button type="button" data-t="del" title="Удалить" aria-label="Удалить">${icon('trash')}</button></div>` : ''}
-      <div class="wbody"><p class="note">Загрузка…</p></div></section>`).join('')}</div>`;
+      <div class="wbody"><div class="sk"></div></div></section>`).join('')}</div>`;
   }
 
   function paintWidgets() {
@@ -185,7 +185,7 @@ export async function mount(root, { rest }) {
           ${m.params.includes('limit') ? `<label class="field"><span>Сколько строк</span><input class="in" id="wlimit" type="number" min="1" max="50" value="${st.params.limit || 8}"></label>` : ''}
           <label class="field"><span>Свой заголовок</span><input class="in" id="wtitle" maxlength="60" placeholder="${esc(m.title)}" value="${esc(st.title || '')}"></label>
         </div>
-        <div class="field"><span>Предпросмотр</span><div class="w" style="border-style:dashed"><div class="wbody" id="wprev"><p class="note">Загрузка…</p></div></div></div>` : '<p class="note">Выберите метрику, чтобы настроить вид.</p>'}`;
+        <div class="field"><span>Предпросмотр</span><div class="w" style="border-style:dashed"><div class="wbody" id="wprev"><div class="sk"></div></div></div></div>` : '<p class="note">Выберите метрику, чтобы настроить вид.</p>'}`;
       body.querySelectorAll('[data-m]').forEach((b) => b.onclick = () => {
         const nm = metric(b.dataset.m);
         st.metric = nm.id; st.viz = nm.viz[0];

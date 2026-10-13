@@ -1,8 +1,8 @@
 // Каталог артикулов: остатки, минимумы, редактирование и загрузка из Excel.
 import { api, esc, can, icon, toast, fail, modal, confirmBox, table, pageHead, bus, debounce, parseCsv, pickFile, h, fmt } from '../core.js';
 
-export async function mount(root) {
-  let items = [], zones = [], q = '', zone = '', onlyLow = false;
+export async function mount(root, { params = {} } = {}) {
+  let items = [], zones = [], q = (params.q || '').trim().toLowerCase(), zone = '', onlyLow = false;
   root.innerHTML = `${pageHead('Каталог', 'Артикулы, их зоны хранения, вместимость одной ячейки и минимальный остаток для пополнения.',
     `${can('reports.view') ? `<a class="btn" href="/api/reports/stock_sku?format=csv">${icon('download')}Скачать в Excel</a>` : ''}
      ${can('catalog.manage') ? `<button class="btn" id="imp">${icon('upload')}Загрузить из Excel</button><button class="btn pri" id="add">${icon('plus')}Артикул</button>` : ''}`)}
@@ -84,6 +84,7 @@ export async function mount(root) {
       draw();
     } catch (e) { fail(e); }
   }
+  if (params.q) root.querySelector('#q').value = params.q;
   root.querySelector('#q').oninput = debounce((e) => { q = e.target.value.trim().toLowerCase(); draw(); }, 150);
   root.querySelector('#zone').onchange = (e) => { zone = e.target.value; draw(); };
   root.querySelector('#low').onchange = (e) => { onlyLow = e.target.checked; draw(); };

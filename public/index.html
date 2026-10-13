@@ -4,24 +4,27 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <title>WarehouseOS · Адресный склад</title>
-<meta name="theme-color" content="#24292C">
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Onest:wght@400;500;600;700&family=JetBrains+Mono:wght@400;600&family=Michroma&display=swap">
-<link rel="stylesheet" href="/static/css/app.css?v=4">
+<meta name="theme-color" content="#ECEEF0" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#14181B" media="(prefers-color-scheme: dark)">
+<meta name="color-scheme" content="light dark">
+<link rel="stylesheet" href="/static/css/app.css?v=5">
 </head>
 <body>
 <div class="shell" id="shell">
   <aside class="side" id="side" aria-label="Меню">
     <div class="sign"><div class="wordmark" id="wordmark"></div><span class="os">WarehouseOS</span><span class="wh" id="whName">Склад</span><span class="sub" id="whSub"></span></div>
     <div class="brandline"></div>
+    <button type="button" class="search-trigger" data-search aria-label="Поиск"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.6-3.6"/></svg><span>Поиск</span><kbd class="kbd-k">Ctrl K</kbd></button>
     <nav class="menu" id="menu"></nav>
     <div class="me" id="me"></div>
   </aside>
   <div class="stage">
-    <div class="topbar"><button type="button" id="burger" aria-label="Открыть меню"><svg viewBox="0 0 24 24"><path d="M4 6h16M4 12h16M4 18h16"/></svg></button><b id="topTitle">WarehouseOS</b></div>
-    <main id="view" tabindex="-1"><p class="muted">Загрузка…</p></main>
+    <div class="topbar"><button type="button" id="burger" aria-label="Открыть меню"><svg viewBox="0 0 24 24"><path d="M4 6h16M4 12h16M4 18h16"/></svg></button><b id="topTitle">WarehouseOS</b>
+      <button type="button" class="search-trigger" data-search aria-label="Поиск"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.6-3.6"/></svg><span>Поиск</span><kbd class="kbd-k">Ctrl K</kbd></button></div>
+    <main id="view" tabindex="-1"><div class="sk" style="height:38px;width:240px"></div><div class="sk" style="height:220px"></div></main>
   </div>
 </div>
-<script type="module" src="/static/js/app.js?v=4"></script>
+<nav class="tabbar" id="tabbar" aria-label="Разделы"></nav>
+<script type="module" src="/static/js/app.js?v=5"></script>
 </body>
 </html>

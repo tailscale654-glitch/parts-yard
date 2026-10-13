@@ -46,7 +46,7 @@ async function taskView(root, id) {
   let t, filter = 'all', q = '', blind = false;
   const items = await catalog();
   const names = new Map(items.map((s) => [s.art, s.name]));
-  root.innerHTML = '<p class="muted">Загрузка…</p>';
+  root.innerHTML = '<div class="sk" style="height:38px;width:260px"></div><div class="sk" style="height:180px"></div>';
 
   const isDiff = (l) => l.qty_counted != null && (l.qty_counted !== l.qty_expected || (l.art_counted && l.art_counted !== l.art_expected));
   function head() {

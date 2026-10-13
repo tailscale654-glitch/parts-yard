@@ -244,6 +244,7 @@ export async function mount(root, { params }) {
   } catch (e) { root.innerHTML = `<div class="empty"><b>Не удалось загрузить карту</b>${esc(e.message)}</div>`; return null; }
   if (params.receipt) { U.tab = 'in'; U.asn = +params.receipt; }
   if (params.order) { U.tab = 'out'; U.order = +params.order; }
+  if (params.rack && RACK[params.rack]) { U.rack = params.rack; U.cell = null; U.tab = 'rack'; }
   if (params.cell && META[params.cell]) { U.rack = META[params.cell].rack; U.cell = params.cell; }
   if (params.sku) { U.q = params.sku; U.skuSel = params.sku; qi.value = params.sku; }
   render();
