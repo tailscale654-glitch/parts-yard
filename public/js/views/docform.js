@@ -15,7 +15,7 @@ export async function docForm({ kind, onDone }) {
   const body = h('<div style="display:flex;flex-direction:column;gap:12px"></div>');
   body.innerHTML = `<div class="grid3">
       <label class="field"><span>${isOrder ? 'Номер заказа' : 'Номер поставки'}</span><input class="in" id="fnum" maxlength="40" placeholder="${isOrder ? 'ЗК-24130' : 'ПТ-10413'}"></label>
-      ${isOrder ? `<label class="field"><span>Дилер</span><input class="in" id="fdealer" maxlength="120" list="dealers" placeholder="Начните вводить название" autocomplete="off"><span class="hint" id="fdhint">Из справочника дилеров</span></label>
+      ${isOrder ? `<label class="field"><span>Дилер</span><input class="in" id="fdealer" maxlength="120" list="dealers" placeholder="Название или код дилера" autocomplete="off"><span class="hint" id="fdhint">Из справочника Carsale</span></label>
         <label class="field"><span>Срок сборки</span><input class="in" id="fdue" type="time"></label>`
     : `<label class="field"><span>Ворота</span><select class="in" id="fgate">${[1, 2, 3, 4, 5, 6].map((g) => `<option>${g}</option>`).join('')}</select></label><div></div>`}
     </div>
@@ -28,27 +28,34 @@ export async function docForm({ kind, onDone }) {
     <div id="fpastebox" hidden><label class="field"><span>Скопируйте из Excel два столбца — артикул и количество — и вставьте сюда</span>
       <textarea class="in" id="fpastetext" rows="6" placeholder="FO-15208	120&#10;BP-41060	40"></textarea></label>
       <div class="row" style="margin-top:6px"><button class="btn sm pri" type="button" id="fpasteok">Добавить строки</button></div></div>`;
-  // дилеры из справочника: активные предлагаются в списке, новое имя заведёт своего дилера
+  // дилер — только из справочника Carsale (Запчасти → Справочники → Дилеры); можно ввести и код дилера
   let dealers = [];
   const key = (s) => String(s || '').toLowerCase().replace(/ё/g, 'е').replace(/[«»"'`„“”]/g, '').replace(/\s+/g, ' ').trim();
-  const findDealer = (v) => { const k = key(v); return k ? dealers.find((d) => key(d.name) === k) : null; };
+  const findDealer = (v) => {
+    const k = key(v);
+    if (!k) return null;
+    return dealers.find((d) => key(d.name) === k) || dealers.find((d) => d.code && d.code.toLowerCase() === k) || null;
+  };
   if (isOrder) {
-    api('/api/dealers').then((r) => {
-      dealers = r.dealers;
-      const act = dealers.filter((d) => d.active);
-      body.insertAdjacentHTML('beforeend', `<datalist id="dealers">${act.map((d) => `<option value="${esc(d.name)}">${esc([d.source === 'carsale' ? 'Carsale' : 'свой', d.region, d.code].filter(Boolean).join(' · '))}</option>`).join('')}</datalist>`);
-      dealerHint();
-    }).catch(() => {});
     const inp = body.querySelector('#fdealer');
     const dealerHint = () => {
       const el = body.querySelector('#fdhint'), v = inp.value.trim(), d = findDealer(v);
       el.classList.remove('err');
-      if (!v) el.textContent = `Из справочника: ${dealers.filter((x) => x.active).length || ''} дилеров`;
-      else if (d && !d.active) { el.textContent = d.source === 'carsale' ? 'Этого дилера больше нет в Carsale' : 'Дилер отключён в справочнике'; el.classList.add('err'); }
-      else if (d) el.textContent = d.source === 'carsale' ? 'Дилер из Carsale' : 'Свой дилер из справочника';
-      else el.textContent = 'Нового дилера добавим в справочник';
+      if (!dealers.length) el.textContent = 'Справочник дилеров пуст — заказ сохранится с этим именем';
+      else if (!v) el.textContent = `Из справочника Carsale: ${dealers.filter((x) => x.active).length} активных дилеров`;
+      else if (d && !d.active) { el.textContent = 'Дилер неактивен в Carsale — выберите другого'; el.classList.add('err'); }
+      else if (d) el.textContent = [d.code, d.region].filter(Boolean).join(' · ') || 'Дилер из справочника';
+      else { el.textContent = 'Нет в справочнике — выберите из списка'; el.classList.add('err'); }
     };
     inp.addEventListener('input', dealerHint);
+    // ввели код дилера — подставляем полное название
+    inp.addEventListener('change', () => { const d = findDealer(inp.value); if (d && inp.value.trim() !== d.name) { inp.value = d.name; dealerHint(); } });
+    api('/api/dealers').then((r) => {
+      dealers = r.dealers;
+      const act = dealers.filter((d) => d.active);
+      body.insertAdjacentHTML('beforeend', `<datalist id="dealers">${act.map((d) => `<option value="${esc(d.name)}">${esc([d.code, d.region].filter(Boolean).join(' · '))}</option>`).join('')}</datalist>`);
+      dealerHint();
+    }).catch(() => {});
   }
   const tbl = body.querySelector('#flines');
   function paint() {

@@ -7,7 +7,7 @@ const STATUS_PILL = { ok: '<span class="pill ok">успешно</span>', partial
 
 function dealersText(d) {
   if (!d) return '';
-  const ch = [d.added && `+${d.added}`, d.linked && `привязано ${d.linked}`, d.updated && `изм. ${d.updated}`, d.off && `откл. ${d.off}`, d.on && `вернулись ${d.on}`].filter(Boolean).join(', ');
+  const ch = [d.added && `+${d.added}`, d.updated && `изм. ${d.updated}`, d.removed && `удалено ${d.removed}`, d.off && `неакт. ${d.off}`, d.on && `вернулись ${d.on}`].filter(Boolean).join(', ');
   return `дилеров ${d.total}${ch ? ` (${ch})` : ''}`;
 }
 function resultText(r) {
@@ -64,7 +64,7 @@ sudo parts-yard carsale-sync      # первая синхронизация с �
           <dl class="kv"><dt>Сервер</dt><dd class="mono">${esc(st.base || '—')}</dd><dt>Пользователь</dt><dd class="mono">${esc(st.login || 'не задан')}</dd>
             <dt>Филиал</dt><dd class="mono">${esc(st.filial || 'определится при первой синхронизации')}</dd>
             <dt>Последняя удачная</dt><dd>${lastOk ? `${fmtTs(lastOk.started)} · ${fmt(lastOk.stats.directory)} в каталоге, ${fmt(lastOk.stats.stockRows)} строк остатков${lastOk.stats.dealers ? `, ${dealersText(lastOk.stats.dealers)}` : ''}, ${(lastOk.stats.ms / 1000).toFixed(1)} с` : '—'}</dd>
-            <dt>Что берём</dt><dd>каталог (артикул, название, тип, цена, единица, модель, место), остатки выбранных статусов и справочник дилеров (ID и название). Заказы клиентов и персональные данные не загружаются.</dd></dl>
+            <dt>Что берём</dt><dd>каталог (артикул, название, тип, цена, единица, модель, место), остатки выбранных статусов и справочник дилеров из «Запчасти → Справочники → Дилеры» (код, название, регион, адрес, телефон, ИНН). Заказы клиентов, персональные данные, логины и ключи интеграций дилеров не загружаются.</dd></dl>
         </div></div>
         <div class="card"><div class="ch"><h2>Настройки</h2></div><div class="cb" style="display:flex;flex-direction:column;gap:12px" id="settings"></div></div>
       </div>

@@ -1,6 +1,6 @@
 'use strict';
-// Справочник дилеров: список, карточка, свои дилеры (добавить, изменить, удалить).
-// Дилеров из Carsale меняет только синхронизация — у них редактируется лишь заметка.
+// Справочник дилеров — копия Carsale «Запчасти → Справочники → Дилеры». Добавляет, меняет и удаляет
+// дилеров только синхронизация с Carsale; в WarehouseOS у дилера можно поправить лишь свою заметку.
 const { audit, now } = require('./db');
 const D = require('./dealers');
 
@@ -33,50 +33,12 @@ module.exports = function dealersApi(api, { db, CS, need, h, WmsError }) {
     return d;
   }));
 
-  const text = (v, max) => D.clean(v, max);
-  function checkLocal(b, selfId = null) {
-    const name = text(b.name, 120);
-    if (!name) throw new WmsError(400, 'NO_NAME', 'Укажите название дилера');
-    const same = D.findByName(db, name);
-    if (same && same.id !== selfId) throw new WmsError(409, 'DEALER_EXISTS', `Дилер «${same.name}» уже есть в справочнике`);
-    return { name, code: text(b.code, 40), region: text(b.region, 80), city: text(b.city, 80), address: text(b.address, 200),
-      phone: text(b.phone, 60), inn: text(b.inn, 20), note: text(b.note, 300) };
-  }
-
-  api.post('/dealers', need('docs.orders'), h((req) => {
-    const d = D.insertLocal(db, checkLocal(req.body || {}));
-    audit(db, req.user.username, 'Дилер добавлен', d.name);
-    bump();
-    return { ok: true, dealer: d };
-  }));
-
   api.put('/dealers/:id(\\d+)', need('docs.orders'), h((req) => {
-    const d = get(req.params.id), b = req.body || {};
-    if (d.source === 'carsale') {
-      db.prepare('UPDATE dealer SET note = ?, updated = ? WHERE id = ?').run(text(b.note, 300) || null, now(), d.id);
-    } else {
-      const v = checkLocal(b, d.id);
-      db.transaction(() => {
-        db.prepare(`UPDATE dealer SET name = ?, name_key = ?, code = ?, region = ?, city = ?, address = ?, phone = ?, inn = ?, note = ?,
-          active = ?, updated = ? WHERE id = ?`)
-          .run(v.name, D.nameKey(v.name), v.code || null, v.region || null, v.city || null, v.address || null, v.phone || null, v.inn || null,
-            v.note || null, b.active === false ? 0 : 1, now(), d.id);
-        if (v.name !== d.name) db.prepare('UPDATE orders SET dealer = ? WHERE dealer_id = ?').run(v.name, d.id);
-      })();
-    }
-    audit(db, req.user.username, 'Дилер изменён', d.name);
+    const d = get(req.params.id);
+    const note = D.clean((req.body || {}).note, 300) || null;
+    db.prepare('UPDATE dealer SET note = ?, updated = ? WHERE id = ?').run(note, now(), d.id);
+    audit(db, req.user.username, 'Заметка о дилере изменена', d.name);
     bump();
     return { ok: true, dealer: get(d.id) };
-  }));
-
-  api.delete('/dealers/:id(\\d+)', need('docs.orders'), h((req) => {
-    const d = get(req.params.id);
-    if (d.source === 'carsale') throw new WmsError(409, 'FROM_CARSALE', 'Дилер из Carsale удаляется только в Carsale — здесь он отключится сам при следующей проверке');
-    const n = db.prepare('SELECT COUNT(*) FROM orders WHERE dealer_id = ?').pluck().get(d.id);
-    if (n) throw new WmsError(409, 'HAS_ORDERS', `У дилера ${n} заказов — удалить нельзя. Снимите отметку «Активен», чтобы он не предлагался в новых заказах`);
-    db.prepare('DELETE FROM dealer WHERE id = ?').run(d.id);
-    audit(db, req.user.username, 'Дилер удалён', d.name);
-    bump();
-    return { ok: true };
   }));
 };

@@ -26,7 +26,7 @@ const HELP = `WarehouseOS — адресный склад запчастей, к
                                         заказ дилера: артикул;количество
   export-stock <файл.csv>               остатки по адресам
   backup <файл.db>                      резервная копия базы на ходу
-  dealer-list                           справочник дилеров
+  dealer-list                           справочник дилеров (из Carsale)
   carsale-sync                          забрать каталог, остатки и дилеров из Carsale сейчас
   carsale-status                        состояние интеграции и последние синхронизации
 
@@ -170,10 +170,11 @@ async function main() {
       const rows = readRows(pos[0], 2);
       checkSkus(db, rows);
       if (db.prepare('SELECT 1 FROM orders WHERE number = ?').get(opt.number)) die(`Заказ ${opt.number} уже есть`);
+      const rd = resolveDealer(db, { name: String(opt.dealer) });
+      if (rd.error) die(rd.error + ' (список: parts-yard dealer-list)');
       db.transaction(() => {
-        const d = resolveDealer(db, { name: String(opt.dealer) });
         const oid = db.prepare('INSERT INTO orders(number, dealer, dealer_id, due, created) VALUES (?,?,?,?,?)')
-          .run(opt.number, d.name, d.id, opt.due === true ? '' : (opt.due || ''), now()).lastInsertRowid;
+          .run(opt.number, rd.dealer ? rd.dealer.name : rd.name, rd.dealer ? rd.dealer.id : null, opt.due === true ? '' : (opt.due || ''), now()).lastInsertRowid;
         const ins = db.prepare('INSERT INTO order_line(order_id, art, qty) VALUES (?,?,?)');
         for (const [n, [art, qty]] of rows) ins.run(oid, art, toInt(qty, n));
         db.prepare("INSERT INTO oplog(ts, op, kind, qty, user, ref) VALUES (?, 'Заказ загружен', 'doc', ?, 'импорт', ?)").run(now(), rows.length, opt.number);
@@ -213,8 +214,8 @@ async function main() {
       }
       if (s.dealers) {
         const d = s.dealers;
-        console.log(`Дилеров в Carsale ${d.total}: новых ${d.added}, привязано к своим ${d.linked}, изменено ${d.updated}, отключено ${d.off}`);
-        for (const c of d.changes.slice(0, 15)) console.log(`  ${{ add: '+', link: '=', upd: '~', off: '−', on: '+' }[c.kind]} ${c.name}${c.detail ? ` (${c.detail})` : ''}`);
+        console.log(`Дилеров в справочнике Carsale ${d.total} (активных ${d.active}): новых ${d.added}, изменено ${d.updated}, удалено ${d.removed}, заказов привязано ${d.relinked}`);
+        for (const c of d.changes.slice(0, 40)) console.log(`  ${{ add: '+', upd: '~', del: '×', off: '−', on: '+' }[c.kind]} ${c.name}${c.detail ? ` (${c.detail})` : ''}`);
       }
       for (const w of s.warnings) console.log('Внимание: ' + w);
       if (r.partial) console.log('Частично не получилось: ' + r.error);
@@ -222,8 +223,8 @@ async function main() {
     }
     case 'dealer-list': {
       const rows = dealerList(db);
-      for (const d of rows) console.log(`${String(d.id).padStart(4)}  ${d.source === 'carsale' ? 'Carsale' : 'свой   '}  ${d.active ? '      ' : 'откл. '}  ${String(d.orders).padStart(4)} зак.  ${d.name}`);
-      console.log(`Всего ${rows.length}, из Carsale ${rows.filter((d) => d.source === 'carsale').length}`);
+      for (const d of rows) console.log(`${(d.code || '').padEnd(5)} ${d.active ? '      ' : 'неакт.'}  ${String(d.orders).padStart(4)} зак.  ${d.name}${d.region ? ` · ${d.region}` : ''}`);
+      console.log(`Всего ${rows.length}, активных ${rows.filter((d) => d.active).length}${rows.length ? '' : ' — запустите parts-yard carsale-sync'}`);
       break;
     }
     case 'carsale-status': {

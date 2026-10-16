@@ -14,8 +14,8 @@
 //        фильтры status_ids, store_ids, type_ids — массивы чисел
 //   /b/tmc_hybrid&get_tmc_store_list         — склады
 //   /b/tmc_hybrid&get_tmc_types              — типы (A, B, C, D, TOOLS)
-//   /b/monster/bot&table_dealers             — справочник дилеров (all: "Y" — все, иначе по region_id)
-//   /b/monster/bot&table_regions             — регионы
+//   /b/tmc_hybrid&get_tmc_dealer_list        — дилеры из «Запчасти → Справочники → Дилеры»
+//        (в ответе есть логины/пароли интеграций дилеров — берём только код, название, регион, адрес, телефон, ИНН)
 const { now, getSetting, setSetting, audit } = require('./db');
 const dealersDb = require('./dealers');
 
@@ -115,11 +115,7 @@ function createClient({ base, login, password, filial, timeoutMs = 30000, fetchI
 
   async function dealers() {
     await ensureFilial();
-    let rows = arr(await call('/b/monster/bot&table_dealers', { all: 'Y' }));
-    // на старых версиях Carsale «все» не поддерживается — тогда без параметра
-    if (!rows.length) rows = arr(await call('/b/monster/bot&table_dealers'));
-    const regions = await call('/b/monster/bot&table_regions').then(arr).catch(() => []);
-    return { rows, regions };
+    return arr(await call('/b/tmc_hybrid&get_tmc_dealer_list'));
   }
 
   return { auth, call, ensureFilial, stockList, dealers, get filialId() { return filialId; } };
@@ -286,12 +282,12 @@ function createCarsaleSync(db, L, cfg, { clientFactory } = {}) {
 
   // дилеры: сверка справочника; изменения пишем в журнал аудита, чтобы было видно, что поменялось
   async function syncDealers(client) {
-    const { rows, regions } = await client.dealers();
-    const st = dealersDb.applyCarsaleDealers(db, rows, regions);
-    const changed = st.added + st.updated + st.linked + st.off + st.on;
+    const st = dealersDb.applyCarsaleDealers(db, await client.dealers());
+    const changed = st.added + st.updated + st.removed + st.off + st.on;
+    if (!changed && st.relinked) db.exec("UPDATE meta SET v = v + 1 WHERE k = 'rev'");
     if (changed) {
-      const parts = [st.added && `${st.added} новых`, st.linked && `${st.linked} привязано`, st.updated && `${st.updated} изменено`,
-        st.off && `${st.off} отключено`, st.on && `${st.on} снова активны`].filter(Boolean).join(', ');
+      const parts = [st.added && `${st.added} новых`, st.updated && `${st.updated} изменено`, st.removed && `${st.removed} удалено`,
+        st.off && `${st.off} стали неактивны`, st.on && `${st.on} снова активны`].filter(Boolean).join(', ');
       audit(db, 'carsale', `Дилеры Carsale: ${parts}`, st.changes);
       db.exec("UPDATE meta SET v = v + 1 WHERE k = 'rev'");
     }

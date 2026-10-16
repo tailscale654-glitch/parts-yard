@@ -2,7 +2,7 @@
 // быстрый поиск (Ctrl K / ⌘K) и нижняя панель вкладок на телефоне.
 import { S, can, api, esc, icon, h, toast, fail, modal, bus } from './core.js';
 
-const V = '?v=7';
+const V = '?v=8';
 const ROUTES = [
   { grp: 'Обзор' },
   { path: 'dashboard', title: 'Дашборды', short: 'Обзор', icon: 'dash', perm: ['dashboard.view'], mod: './views/dashboard.js' },
@@ -190,12 +190,13 @@ function palSearch(raw, d) {
       })),
     });
   }
-  const dls = d.dealers.filter((x) => x.name.toLowerCase().includes(q) || norm(x.code).includes(nq) && nq.length > 1)
+  const dls = d.dealers.filter((x) => x.name.toLowerCase().includes(q) || (nq.length > 1 && norm(x.code).includes(nq)))
     .sort((a, b) => b.active - a.active || b.open_orders - a.open_orders).slice(0, 5);
   if (dls.length) {
     out.push({
       t: 'Дилеры', items: dls.map((x) => ({
-        icon: 'store', html: mark(x.name, q), sub: [x.source === 'carsale' ? 'Carsale' : 'свой', x.open_orders ? `в работе ${x.open_orders}` : `${x.orders} зак.`, x.active ? '' : 'отключён'].filter(Boolean).join(' · '),
+        icon: 'store', html: `${mark(x.name, q)}${x.code ? ` <span class="mono t3">${mark(x.code, q)}</span>` : ''}`,
+        sub: esc([x.region, x.open_orders ? `в работе ${x.open_orders}` : `${x.orders} зак.`, x.active ? '' : 'неактивен'].filter(Boolean).join(' · ')),
         href: `#/dealers?open=${x.id}`,
       })),
     });

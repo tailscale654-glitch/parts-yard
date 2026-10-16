@@ -15,10 +15,16 @@ const { createClient } = require('../src/carsale');
 const LAYOUT_FILE = path.join(__dirname, '..', 'layout.json');
 let mock, mockBase, server, base, db, dir, L, app;
 const jars = {};
-const M = { password: 'secret', token: 'T1', calls: 0, expireAfter: Infinity, rows: [], directory: [],
-  // как настоящий table_dealers: только ID и название, список отдаётся лишь с all = "Y"
-  dealers: [{ dealer_id: '1937', dealer_name: '"Asia Motor" MChJ' }, { dealer_id: '1942', dealer_name: '"Billur motors Qiziltepa" MChJ' },
-    { dealer_id: '2001', dealer_name: 'СП ООО "JAC Motors Toshkent"' }] };
+const M = { password: 'secret', token: 'T1', calls: 0, expireAfter: Infinity, rows: [], directory: [], dealers: [] };
+// как настоящий get_tmc_dealer_list: вместе с карточкой отдаются логины и ключи интеграций — их хранить нельзя
+const dealerRow = (id, name, code, region, state = 'A') => ({ dealer_id: id, region_id: '1', name, state, address: 'ул. Мохичехра, 48а', code,
+  phone_number: '+998 90 000 00 00', fax: '', note: '', name_uz: name, filial_id: '3641522', client_id_faktura: '2661', username: 'dealer@mail.example',
+  password: 'SECRET-PASS', client_secret: 'SECRET-KEY', client_id: 'abozorcar', company_inn: '310044027', url_token: 'https://account.faktura.uz/token',
+  url_api: 'https://api.faktura.uz/Api', methodgetstatus: '', region_name: region, state_name: state === 'A' ? 'Активный' : 'Неактивный', rating: '<span></span>', rating_value: '0' });
+function makeDealers() {
+  M.dealers = [dealerRow('1125', 'OOO «ASIAMOTOR»', 'ASM', 'город Ташкент'), dealerRow('1127', 'OOO «NURAFSHON AUTO ZONE»', 'JNZ', 'город Ташкент', 'P'),
+    dealerRow('1181', '"Jac Motors Toshkent" MCHJ Qk', 'JMT', 'город Ташкент'), dealerRow('1147', 'OOO «Buyuk Sam Sabr»', 'BSS', 'Самаркандская область')];
+}
 
 function makeData() {
   const types = ['A', 'B', 'C', 'D', 'TOOLS'];
@@ -43,6 +49,7 @@ function makeData() {
 
 before(async () => {
   makeData();
+  makeDealers();
   const m = express();
   m.use(express.json());
   m.post('/dashboard/auth', (req, res) => {
@@ -58,8 +65,8 @@ before(async () => {
     if (b.url === '/b/tmc_hybrid&get_tmc_directory') return res.json({ status: '200', data: M.directory });
     if (b.url === '/b/tmc_hybrid&get_tmc_store_list') return res.json({ 0: { id: '381', name: 'JAC Motors Toshkent Store', code: 'JMTS', state: 'A' }, 1: { id: '521', name: 'Spare Parts Customs Warehouse', code: 'SPCW', state: 'P' } });
     if (b.url === '/b/tmc_hybrid&get_tmc_types') return res.json({ status: '200', data: ['A', 'B', 'C', 'D', 'TOOLS'].map((n, i) => ({ id: String(422 + i), name_: n })) });
-    if (b.url === '/b/monster/bot&table_dealers') return res.json(b.all === 'Y' ? M.dealers : []);
-    if (b.url === '/b/monster/bot&table_regions') return res.json([{ region_id: '1', region_name: 'город Ташкент' }, { region_id: '2', region_name: 'Андижанская область' }]);
+    if (b.url === '/b/tmc_hybrid&get_tmc_dealer_list') return res.json(M.dealers);
+    if (b.url === '/b/monster/bot&table_dealers') return res.json([{ dealer_id: '1937', dealer_name: '"Asia Motor" MChJ' }]);
     if (b.url === '/b/tmc_hybrid&get_tmc_stock_list') {
       let rows = M.rows;
       if (Array.isArray(b.status_ids)) rows = rows.filter((r) => b.status_ids.includes(r.id_status));
@@ -124,8 +131,11 @@ test('синхронизация: каталог, зоны, остатки то�
   assert.strictEqual(db.prepare("SELECT name FROM sku WHERE art = 'ORPHAN-1'").pluck().get(), 'ORPHAN PART');
   const expected = M.rows.filter((x) => x.id_status === 8).reduce((n, x) => n + Number(x.count_tmc), 0);
   assert.strictEqual(s.units, expected);
-  assert.strictEqual(s.dealers.added, 3, 'дилеры из Carsale загружены той же синхронизацией');
-  assert.strictEqual(db.prepare("SELECT COUNT(*) FROM dealer WHERE source = 'carsale' AND active = 1").pluck().get(), 3);
+  assert.strictEqual(s.dealers.added, 4, 'дилеры из справочника запчастей загружены той же синхронизацией');
+  assert.strictEqual(db.prepare('SELECT COUNT(*) FROM dealer WHERE active = 1').pluck().get(), 3, 'неактивный в Carsale — неактивен и здесь');
+  assert.ok(!db.prepare("SELECT 1 FROM dealer WHERE name LIKE '%Asia Motor%'").get(), 'дилеры из других разделов Carsale не берутся');
+  const dump = JSON.stringify(db.prepare('SELECT * FROM dealer').all()) + JSON.stringify(db.prepare('SELECT * FROM sync_run').all()) + JSON.stringify(db.prepare('SELECT * FROM audit').all());
+  assert.ok(!/SECRET|faktura|dealer@mail/.test(dump), 'логины, пароли и ключи интеграций дилеров не сохраняются');
 });
 
 test('настройки: соответствие типов зонам, повторная синхронизация обновляет', async () => {
@@ -144,72 +154,72 @@ test('настройки: соответствие типов зонам, пов
   assert.ok(r.data.stats.zoneKept >= 1);
 });
 
-test('дилеры: заказ по имени, привязка к Carsale, отключение, переименование', async () => {
-  // заказ на дилера, которого ещё нет в справочнике, — заводится свой дилер
-  const o = await as('boss', 'POST', '/api/orders', { number: 'D-1', dealer: 'Дилерский центр «Восток»', lines: [{ art: 'P0001-B', qty: 1 }] });
+test('дилеры: только из справочника Carsale, заказы, удаление лишних', async () => {
+  // заказ — только на дилера из справочника: по id, названию (без учёта кавычек и формы) или коду
+  const asm = db.prepare("SELECT * FROM dealer WHERE ext_id = '1125'").get();
+  let o = await as('boss', 'POST', '/api/orders', { number: 'D-1', dealer_id: asm.id, lines: [{ art: 'P0001-B', qty: 1 }] });
   assert.strictEqual(o.status, 200, JSON.stringify(o.data));
-  assert.strictEqual(o.data.newDealer, true);
-  const local = db.prepare("SELECT * FROM dealer WHERE name = 'Дилерский центр «Восток»'").get();
-  assert.strictEqual(local.source, 'local');
-  // второй заказ с тем же дилером, написанным иначе, — тот же дилер
-  const o2 = await as('boss', 'POST', '/api/orders', { number: 'D-2', dealer: 'дилерский центр "Восток"', lines: [{ art: 'P0001-B', qty: 1 }] });
-  assert.strictEqual(o2.data.newDealer, false);
-  assert.strictEqual(db.prepare("SELECT COUNT(DISTINCT dealer_id) FROM orders WHERE number IN ('D-1', 'D-2')").pluck().get(), 1);
+  o = await as('boss', 'POST', '/api/orders', { number: 'D-2', dealer: 'ООО "Jac Motors Toshkent"', lines: [{ art: 'P0001-B', qty: 1 }] });
+  assert.strictEqual(o.data.dealer, '"Jac Motors Toshkent" MCHJ Qk');
+  o = await as('boss', 'POST', '/api/orders', { number: 'D-3', dealer: 'bss', lines: [{ art: 'P0001-B', qty: 1 }] });
+  assert.strictEqual(o.data.dealer, 'OOO «Buyuk Sam Sabr»');
+  const bad = await as('boss', 'POST', '/api/orders', { number: 'D-4', dealer: 'Дилерский центр «Восток»', lines: [{ art: 'P0001-B', qty: 1 }] });
+  assert.strictEqual(bad.data.code, 'BAD_DEALER', 'дилера не из справочника не заводим');
+  const off = db.prepare("SELECT id FROM dealer WHERE ext_id = '1127'").pluck().get();
+  assert.match((await as('boss', 'POST', '/api/orders', { number: 'D-4', dealer_id: off, lines: [{ art: 'P0001-B', qty: 1 }] })).data.error, /неактивен/);
 
-  // тот же дилер появился в Carsale — свой привязывается, заказы получают имя из Carsale
-  M.dealers.push({ dealer_id: '1950', dealer_name: 'Дилерский центр "Восток"' });
+  // посторонний дилер в базе (например, из прежней версии) удаляется при синхронизации, заказ сохраняет имя
+  const t = '2026-10-01 10:00:00';
+  const stray = db.prepare("INSERT INTO dealer(name, name_key, source, created) VALUES ('Сервис «Чиланзар»', 'сервис чиланзар', 'local', ?)").run(t).lastInsertRowid;
+  db.prepare("INSERT INTO orders(number, dealer, dealer_id, created) VALUES ('OLD-1', 'Сервис «Чиланзар»', ?, ?)").run(stray, t);
+  // старый заказ без ссылки, но с узнаваемым именем — привяжется
+  db.prepare("INSERT INTO orders(number, dealer, created) VALUES ('OLD-2', 'Jac Motors Toshkent', ?)").run(t);
+
+  // в Carsale: дилер переименован, один удалён, один стал активным
+  M.dealers = M.dealers.filter((d) => d.dealer_id !== '1147');
+  M.dealers.find((d) => d.dealer_id === '1125').name = 'OOO «ASIA MOTOR»';
+  M.dealers.find((d) => d.dealer_id === '1127').state = 'A';
   let r = await as('boss', 'POST', '/api/integrations/carsale/sync');
-  assert.strictEqual(r.data.stats.dealers.linked, 1);
-  assert.strictEqual(r.data.stats.dealers.added, 0);
-  const linked = db.prepare('SELECT * FROM dealer WHERE id = ?').get(local.id);
-  assert.strictEqual(linked.source, 'carsale');
-  assert.strictEqual(linked.ext_id, '1950');
-  assert.strictEqual(db.prepare("SELECT dealer FROM orders WHERE number = 'D-1'").pluck().get(), 'Дилерский центр "Восток"');
+  const st = r.data.stats.dealers;
+  assert.strictEqual(st.removed, 2, 'удалены: пропавший из Carsale и посторонний');
+  assert.strictEqual(st.updated, 1);
+  assert.strictEqual(st.on, 1);
+  assert.ok(st.relinked >= 1);
+  assert.ok(!db.prepare('SELECT 1 FROM dealer WHERE id = ?').get(stray));
+  assert.strictEqual(db.prepare("SELECT dealer_id FROM orders WHERE number = 'OLD-1'").pluck().get(), null);
+  assert.strictEqual(db.prepare("SELECT dealer FROM orders WHERE number = 'D-3'").pluck().get(), 'OOO «Buyuk Sam Sabr»', 'имя в заказе остаётся');
+  assert.strictEqual(db.prepare("SELECT dealer FROM orders WHERE number = 'D-1'").pluck().get(), 'OOO «ASIA MOTOR»', 'переименование доходит до заказов');
+  assert.strictEqual(db.prepare("SELECT dealer_id FROM orders WHERE number = 'OLD-2'").pluck().get(), db.prepare("SELECT id FROM dealer WHERE ext_id = '1181'").pluck().get());
+  assert.ok(db.prepare("SELECT 1 FROM audit WHERE action LIKE 'Дилеры Carsale:%удалено%'").get(), 'изменения видны в журнале аудита');
 
-  // пропал из Carsale — отключается, но заказы остаются
-  M.dealers = M.dealers.filter((d) => d.dealer_id !== '1942');
-  M.dealers.find((d) => d.dealer_id === '1937').dealer_name = 'Asia Motor MChJ';
-  r = await as('boss', 'POST', '/api/integrations/carsale/sync');
-  assert.strictEqual(r.data.stats.dealers.off, 1);
-  assert.strictEqual(r.data.stats.dealers.updated, 1);
-  const list = (await as('keeper', 'GET', '/api/dealers')).data;
-  assert.strictEqual(list.dealers.find((d) => d.ext_id === '1942').active, 0);
-  assert.strictEqual(list.dealers.find((d) => d.ext_id === '1950').orders, 2);
-  assert.ok(list.carsale.configured);
-  assert.ok(db.prepare("SELECT 1 FROM audit WHERE action LIKE 'Дилеры Carsale:%'").get(), 'изменения видны в журнале аудита');
-
-  // пустой ответ Carsale не отключает весь справочник
+  // пустой ответ Carsale справочник не трогает
   const keep = M.dealers;
   M.dealers = [];
   r = await as('boss', 'POST', '/api/integrations/carsale/sync');
-  assert.strictEqual(r.data.stats.dealers.off, 0);
+  assert.strictEqual(r.data.stats.dealers.removed, 0);
   assert.ok(r.data.stats.warnings.some((w) => /пустой список дилеров/.test(w)));
   M.dealers = keep;
 
-  // вернулся — снова активен
-  M.dealers.push({ dealer_id: '1942', dealer_name: '"Billur motors Qiziltepa" MChJ' });
-  r = await as('boss', 'POST', '/api/integrations/carsale/sync');
-  assert.strictEqual(r.data.stats.dealers.on, 1);
-
-  // свои дилеры: права, дубликаты, удаление
-  assert.strictEqual((await as('keeper', 'POST', '/api/dealers', { name: 'Сервис «Чиланзар»' })).status, 403);
-  const add = await as('boss', 'POST', '/api/dealers', { name: 'Сервис «Чиланзар»', region: 'город Ташкент' });
-  assert.strictEqual(add.status, 200);
-  assert.strictEqual((await as('boss', 'POST', '/api/dealers', { name: 'сервис "чиланзар"' })).data.code, 'DEALER_EXISTS');
-  const cs = db.prepare("SELECT id FROM dealer WHERE ext_id = '1937'").pluck().get();
-  assert.strictEqual((await as('boss', 'DELETE', `/api/dealers/${cs}`)).data.code, 'FROM_CARSALE');
-  assert.strictEqual((await as('boss', 'PUT', `/api/dealers/${cs}`, { note: 'забирает по вторникам', name: 'хак' })).status, 200);
-  assert.strictEqual(db.prepare('SELECT name FROM dealer WHERE id = ?').pluck().get(cs), 'Asia Motor MChJ', 'у дилера из Carsale меняется только заметка');
-  assert.strictEqual((await as('boss', 'DELETE', `/api/dealers/${add.data.dealer.id}`)).status, 200);
-  const card = await as('keeper', 'GET', `/api/dealers/${local.id}`);
-  assert.strictEqual(card.data.orders.length, 2);
+  // в WarehouseOS у дилера меняется только заметка; добавлять и удалять нельзя
+  const list = (await as('keeper', 'GET', '/api/dealers')).data;
+  assert.strictEqual(list.dealers.length, 3);
+  assert.ok(list.dealers.every((d) => d.source === 'carsale'));
+  assert.strictEqual((await as('boss', 'POST', '/api/dealers', { name: 'Новый' })).status, 404);
+  assert.strictEqual((await as('boss', 'DELETE', `/api/dealers/${asm.id}`)).status, 404);
+  assert.strictEqual((await as('keeper', 'PUT', `/api/dealers/${asm.id}`, { note: 'x' })).status, 403);
+  assert.strictEqual((await as('boss', 'PUT', `/api/dealers/${asm.id}`, { note: 'забирает по вторникам', name: 'хак' })).status, 200);
+  const card = (await as('keeper', 'GET', `/api/dealers/${asm.id}`)).data;
+  assert.strictEqual(card.name, 'OOO «ASIA MOTOR»');
+  assert.strictEqual(card.note, 'забирает по вторникам');
+  assert.strictEqual(card.orders.length, 1);
+  assert.strictEqual(card.inn, '310044027');
 
   // загрузку дилеров можно выключить
   await as('boss', 'PUT', '/api/integrations/carsale/settings', { dealers: false });
   r = await as('boss', 'POST', '/api/integrations/carsale/sync');
   assert.strictEqual(r.data.stats.dealers, undefined);
   await as('boss', 'PUT', '/api/integrations/carsale/settings', { dealers: true });
-  for (const n of ['D-1', 'D-2']) await as('boss', 'DELETE', `/api/orders/${db.prepare('SELECT id FROM orders WHERE number = ?').pluck().get(n)}`);
+  for (const n of ['D-1', 'D-2', 'D-3', 'OLD-1', 'OLD-2']) await as('boss', 'DELETE', `/api/orders/${db.prepare('SELECT id FROM orders WHERE number = ?').pluck().get(n)}`);
 });
 
 test('сверка и поставка на неразмещённое', async () => {

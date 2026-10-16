@@ -145,7 +145,7 @@ curl -b c.txt -H 'Content-Type: application/json' -H 'X-Op-Id: 6f1c…' \
 | POST | `/api/receipts` | docs.receipts | `{doc,gate,lines:[{art,qty}]}` |
 | DELETE | `/api/receipts/doc/{doc}` | docs.receipts | пока ничего не размещено |
 | GET | `/api/orders?state=open\|done\|all` | stock.view | заказы со строками, взято, остаток на складе |
-| POST | `/api/orders` | docs.orders | `{number,dealer_id?,dealer,due:"15:00",lines:[{art,qty}]}` — дилер по `dealer_id` или по имени; нового заводим в справочник (`newDealer:true`) |
+| POST | `/api/orders` | docs.orders | `{number,dealer_id?,dealer,due:"15:00",lines:[{art,qty}]}` — дилер из справочника по `dealer_id`, названию или коду; иначе `400 BAD_DEALER` (пока справочник пуст — принимается имя) |
 | DELETE | `/api/orders/{id}` | docs.orders | пока ничего не взято |
 
 ## Инвентаризация
@@ -195,15 +195,14 @@ curl -b c.txt -H 'Content-Type: application/json' -H 'X-Op-Id: 6f1c…' \
 
 ## Дилеры
 
+Справочник — копия Carsale «Запчасти → Справочники → Дилеры» (`/b/tmc_hybrid&get_tmc_dealer_list`).
+Добавляет, меняет и удаляет дилеров только синхронизация.
+
 | Метод | Путь | Право | |
 |---|---|---|---|
-| GET | `/api/dealers` | stock.view | справочник с числом заказов, регионы, состояние проверки в Carsale |
+| GET | `/api/dealers` | stock.view | дилеры (код, регион, адрес, телефон, ИНН, `active`, число заказов), регионы, состояние проверки |
 | GET | `/api/dealers/{id}` | stock.view | карточка: последние 30 заказов и итоги |
-| POST | `/api/dealers` | docs.orders | свой дилер `{name,code,region,city,address,phone,inn,note}`; `409 DEALER_EXISTS` |
-| PUT | `/api/dealers/{id}` | docs.orders | у своего — все поля и `active`; у дилера из Carsale — только `note` |
-| DELETE | `/api/dealers/{id}` | docs.orders | только свой и без заказов (`409 HAS_ORDERS`, `409 FROM_CARSALE`) |
-
-Дилеры из Carsale (`source:"carsale"`, `ext_id`) обновляются синхронизацией; пропавшие получают `active:0`.
+| PUT | `/api/dealers/{id}` | docs.orders | `{note}` — заметка склада, в Carsale не уходит |
 
 ## Интеграция Carsale
 

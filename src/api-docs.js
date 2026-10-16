@@ -155,21 +155,19 @@ module.exports = function docsApi(api, { db, L, INV, need, h, mutation, WmsError
     if (due && !/^\d{1,2}:\d{2}$/.test(due)) throw new WmsError(400, 'BAD_DUE', 'Срок — время в формате 15:00');
     if (db.prepare('SELECT 1 FROM orders WHERE number = ?').get(number)) throw new WmsError(409, 'ORDER_EXISTS', `Заказ ${number} уже есть`);
     const lines = checkLines(req.body.lines);
-    let newDealer = false;
+    // дилер — только из справочника Carsale
+    const rd = resolveDealer(db, { id: dealerId, name: dealerName });
+    if (rd.error) throw new WmsError(400, 'BAD_DEALER', rd.error);
     const id = db.transaction(() => {
-      // дилер из справочника; если такого ещё нет — заводим своего, чтобы заказы по нему собирались вместе
-      const before = db.prepare('SELECT MAX(id) FROM dealer').pluck().get() || 0;
-      const d = resolveDealer(db, { id: dealerId, name: dealerName });
-      if (!d) throw new WmsError(400, 'NO_DEALER', 'Дилер не найден — выберите из списка');
-      newDealer = d.id > before;
-      const oid = db.prepare('INSERT INTO orders(number, dealer, dealer_id, due, created) VALUES (?,?,?,?,?)').run(number, d.name, d.id, due, now()).lastInsertRowid;
+      const oid = db.prepare('INSERT INTO orders(number, dealer, dealer_id, due, created) VALUES (?,?,?,?,?)')
+        .run(number, rd.dealer ? rd.dealer.name : rd.name, rd.dealer ? rd.dealer.id : null, due, now()).lastInsertRowid;
       const ins = db.prepare('INSERT INTO order_line(order_id, art, qty) VALUES (?,?,?)');
       for (const l of lines) ins.run(oid, l.art, l.qty);
       oplog.run(now(), 'Заказ создан', 'doc', lines.length, req.user.username, number);
       bump();
       return oid;
     })();
-    return { ok: true, id, number, newDealer };
+    return { ok: true, id, number, dealer: rd.dealer ? rd.dealer.name : rd.name };
   }));
   api.delete('/orders/:id(\\d+)', need('docs.orders'), h((req) => {
     const o = db.prepare('SELECT * FROM orders WHERE id = ?').get(+req.params.id);

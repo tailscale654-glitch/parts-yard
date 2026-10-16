@@ -146,7 +146,7 @@ const MIGRATIONS = [
       CREATE INDEX sync_run_started ON sync_run(source, started);
     `);
   },
-  // 4 — справочник дилеров (свои и из Carsale), заказы ссылаются на дилера
+  // 4 — справочник дилеров, заказы ссылаются на дилера
   (db) => {
     db.exec(`
       CREATE TABLE dealer(
@@ -161,8 +161,11 @@ const MIGRATIONS = [
       ALTER TABLE orders ADD COLUMN dealer_id INTEGER REFERENCES dealer(id);
       CREATE INDEX orders_dealer ON orders(dealer_id);
     `);
-    // дилеры из уже существующих заказов становятся «своими» записями справочника
-    require('./dealers').linkOrderDealers(db);
+  },
+  // 5 — дилеры только из Carsale «Запчасти → Справочники → Дилеры»: прежние записи (свои и из других
+  // разделов Carsale) удаляются, заказы сохраняют имя дилера; справочник заполнит следующая синхронизация
+  (db) => {
+    db.exec('UPDATE orders SET dealer_id = NULL; DELETE FROM dealer;');
   },
 ];
 

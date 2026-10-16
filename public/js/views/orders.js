@@ -24,7 +24,7 @@ export async function mount(root, { params = {} } = {}) {
       rows: list.map((o) => ({ ...o, status: status(o) })),
       empty: state === 'open' ? 'Все заказы собраны' : 'Заказов нет',
       render: {
-        dealer: (v, o) => `${esc(v)}${o.dealer_active === 0 ? ' <span class="note">нет в Carsale</span>' : ''}${o.dealer_region ? `<div class="note">${esc(o.dealer_region)}</div>` : ''}`,
+        dealer: (v, o) => `${esc(v)}${o.dealer_active === 0 ? ' <span class="note">неактивен в Carsale</span>' : ''}${o.dealer_code || o.dealer_region ? `<div class="note">${esc([o.dealer_code, o.dealer_region].filter(Boolean).join(' · '))}</div>` : ''}`,
         due: (v, o) => (v ? `<span class="${late(o) ? 'err' : ''}">${esc(v)}${late(o) ? ' · просрочен' : ''}</span>` : '<span class="muted">—</span>'),
         progress: (v, o) => progress(o.picked || 0, o.total || 0),
         status: (v) => statusPill(v),
