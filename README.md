@@ -193,29 +193,30 @@ sudo parts-yard dealer-list          # справочник дилеров
 
 Частота, статусы, склады Carsale и соответствие типов зонам — в разделе «Интеграция Carsale».
 
-## HTTPS через nginx
+## HTTPS: адрес без порта
 
-Пароли и cookie нельзя пускать по сети без шифрования за пределами склада. Пример конфига:
+Скрипт `ssl-setup.sh` ставит nginx, кладёт сертификат, открывает систему по `https://<домен>`
+(с `http://` перенаправляет на https) и закрывает прямой доступ к порту 8090.
 
-```nginx
-server {
-    listen 443 ssl;
-    server_name sklad.example.uz;
-    ssl_certificate     /etc/letsencrypt/live/sklad.example.uz/fullchain.pem;
-    ssl_certificate_key /etc/letsencrypt/live/sklad.example.uz/privkey.pem;
-    location / {
-        proxy_pass http://127.0.0.1:8090;
-        proxy_set_header Host $host;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto $scheme;
-    }
-}
+```bash
+# с компьютера Windows скопировать файлы сертификата на сервер (в домашнюю папку)
+scp certificate.crt ca-bundle.crt private.key user1@<IP сервера>:~/
+
+# на сервере
+cd ~/parts-yard && git pull
+sudo sh ssl-setup.sh sklad.jacmotors.uz ~/certificate.crt ~/private.key ~/ca-bundle.crt
+rm -f ~/private.key                       # копия ключа больше не нужна
 ```
 
-В `/etc/default/parts-yard` при этом нужно задать:
-- `WMS_BIND=127.0.0.1`;
-- `WMS_TRUST_PROXY=1`;
-- `WMS_SECURE_COOKIE=1`.
+Скрипт проверяет, что ключ подходит к сертификату, имя домена покрывается сертификатом и срок не истёк.
+Ключ хранится в `/etc/ssl/parts-yard/privkey.pem` (доступ только root), в git он не попадает.
+Если nginx не примет настройки, скрипт ничего не меняет.
+
+- Сертификат выдаётся на имя, поэтому нужна DNS-запись `sklad.jacmotors.uz → IP сервера`
+  (во внутреннем DNS компании или у регистратора домена). По IP браузер покажет предупреждение.
+- Продление: та же команда с новыми файлами.
+- Вернуть как было (`http://IP:8090`): `sudo sh ssl-setup.sh --off`.
+- Если на сервере уже есть nginx с другими сайтами (например, jac-yard), они не затрагиваются.
 
 ## Как подбираются адреса
 
