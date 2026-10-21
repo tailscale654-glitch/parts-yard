@@ -270,6 +270,37 @@ module.exports = function adminApi(api, { db, L, cfg, need, h, WmsError }) {
     return saveLayout(req, zones, true);
   }));
 
+  // ---------- ячейки склада из Excel: топология + закреплённые ячейки артикулов ----------
+  const CELLS = require('./cells');
+  const cellRows = (req) => {
+    const rows = (req.body || {}).rows;
+    if (!Array.isArray(rows) || !rows.length) throw new WmsError(400, 'NO_ROWS', 'Нет строк — вставьте столбцы из Excel или выберите файл');
+    if (rows.length > 20000) throw new WmsError(400, 'TOO_MANY', 'Слишком много строк (больше 20 000)');
+    return rows;
+  };
+  const brief = (a) => ({ zones: a.zones, warnings: a.warnings, stats: a.stats, problems: a.problems.slice(0, 200),
+    impact: a.impact && { cells: a.impact.cells, lostCount: a.impact.lost.length, lost: a.impact.lost.slice(0, 10), inv: a.impact.inv.length },
+    sample: a.items.slice(0, 15).map((i) => ({ art: i.art, name: i.name, cells: i.cells, src: i.src })) });
+  // файл Excel → строки таблицы (CSV браузер разбирает сам)
+  api.post('/admin/cells/read', need('admin.layout'), h((req) => {
+    const b64 = String((req.body || {}).data || '').replace(/^data:[^,]*,/, '');
+    if (!b64) throw new WmsError(400, 'NO_FILE', 'Файл не передан');
+    let table;
+    try { table = require('./xlsx').readXlsx(Buffer.from(b64, 'base64')); } catch (e) { throw new WmsError(400, 'BAD_XLSX', e.message); }
+    return { ok: true, rows: CELLS.rowsFromTable(table) };
+  }));
+  api.post('/admin/cells/preview', need('admin.layout'), h((req) => {
+    let a;
+    try { a = CELLS.analyze(db, L, cellRows(req), layoutImpact); } catch (e) { if (e instanceof WmsError) throw e; throw new WmsError(400, 'BAD_CELLS', e.message); }
+    return { ok: true, ...brief(a) };
+  }));
+  api.post('/admin/cells/apply', need('admin.layout'), h((req) => {
+    const a = CELLS.analyze(db, L, cellRows(req), layoutImpact);
+    const clearCells = !!(req.body || {}).clearCells;
+    if (clearCells && !cfg.demo && !(req.body || {}).confirmClear) throw new WmsError(409, 'CONFIRM_CLEAR', 'Освободить ячейки на рабочем складе — подтвердите ещё раз');
+    try { return { ok: true, ...CELLS.apply(db, L, a, { user: req.user.username, clearCells }) }; } catch (e) { throw new WmsError(409, 'CELLS_APPLY', e.message); }
+  }));
+
   // ---------- аудит ----------
   api.get('/admin/audit', need('admin.audit'), h((req) => {
     const args = [];

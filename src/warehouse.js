@@ -53,13 +53,24 @@ function createWarehouse(db, L, opts = {}) {
     if (!r) throw new WmsError(404, 'NO_RECEIPT', 'Строка поставки не найдена');
     if (r.done) throw new WmsError(409, 'RECEIPT_DONE', 'Строка поставки уже размещена');
     const s = needSku(r.art);
+    // закреплённые за артикулом ячейки идут первыми, в порядке из справочника ячеек
+    let home = [];
+    try { home = JSON.parse(s.home || '[]').filter((a) => L.meta.has(a)); } catch (e) { home = []; }
+    const homeSet = new Set(home);
     const rows = db.prepare('SELECT addr, sku, qty FROM cell WHERE blocked = 0 AND (sku IS NULL OR (sku = ? AND qty < ?))')
-      .all(s.art, s.per).filter((x) => L.meta.has(x.addr) && L.meta.get(x.addr).zone === s.zone);
-    const same = rows.filter((x) => x.sku === s.art).sort((a, b) => G.dist(a.addr) - G.dist(b.addr));
-    const empty = rows.filter((x) => !x.sku).sort((a, b) => G.slotScore(a.addr) - G.slotScore(b.addr));
+      .all(s.art, s.per).filter((x) => L.meta.has(x.addr) && (L.meta.get(x.addr).zone === s.zone || homeSet.has(x.addr)));
+    const homeRows = home.map((a) => rows.find((x) => x.addr === a)).filter(Boolean);
+    const same = rows.filter((x) => x.sku === s.art && !homeSet.has(x.addr)).sort((a, b) => G.dist(a.addr) - G.dist(b.addr));
+    // чужие закреплённые ячейки занимаем в последнюю очередь
+    const others = new Set();
+    for (const h of db.prepare("SELECT home FROM sku WHERE home IS NOT NULL AND home != '[]' AND art != ?").pluck().all(s.art)) {
+      try { for (const a of JSON.parse(h)) others.add(a); } catch (e) { /* пропускаем */ }
+    }
+    const empty = rows.filter((x) => !x.sku && !homeSet.has(x.addr))
+      .sort((a, b) => (others.has(a.addr) - others.has(b.addr)) || G.slotScore(a.addr) - G.slotScore(b.addr));
     const plan = [];
     let left = r.qty - r.placed;
-    for (const x of [...same, ...empty]) {
+    for (const x of [...homeRows, ...same, ...empty]) {
       if (left <= 0) break;
       const put = Math.min(s.per - (x.sku ? x.qty : 0), left);
       if (put > 0) { plan.push({ addr: x.addr, art: s.art, qty: put, fresh: !x.sku }); left -= put; }
@@ -241,7 +252,8 @@ function createWarehouse(db, L, opts = {}) {
     return {
       rev: rev(),
       cells,
-      skus: db.prepare('SELECT art, name, zone, per FROM sku ORDER BY zone, art').all(),
+      skus: db.prepare('SELECT art, name, zone, per, home FROM sku ORDER BY zone, art').all()
+        .map((s) => { let h = []; try { h = JSON.parse(s.home || '[]'); } catch (e) { h = []; } return { ...s, home: h }; }),
       receipts,
       orders,
       log: db.prepare('SELECT ts, op, addr, art, qty, user, ref FROM oplog ORDER BY id DESC LIMIT 100').all(),

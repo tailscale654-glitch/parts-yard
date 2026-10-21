@@ -1,9 +1,23 @@
 'use strict';
 // Интеграция с Carsale: состояние, настройки, запуск синхронизации, сверка, поставка на неразмещённое.
 const { now, audit } = require('./db');
-const { reconcile } = require('./carsale');
+const { reconcile, CarsaleError } = require('./carsale');
 
-module.exports = function carsaleApi(api, { db, CS, need, h, WmsError }) {
+module.exports = function carsaleApi(api, { db, CS, CC, need, h, WmsError }) {
+  // ---------- запись ячеек в Carsale: план (только чтение) → запуск в фоне → состояние ----------
+  const csErr = (e) => { if (e instanceof WmsError) return e; if (!(e instanceof CarsaleError)) console.error(e); return new WmsError(e instanceof CarsaleError ? 502 : 500, 'CARSALE_CELLS', e.message); };
+  api.get('/integrations/carsale/cells/plan', need('admin.settings'), async (req, res, next) => {
+    try { res.json({ ok: true, ...(await CC.plan({ storeId: req.query.store || null, batches: req.query.batches !== '0' })), status: CC.status() }); } catch (e) { next(csErr(e)); }
+  });
+  api.post('/integrations/carsale/cells/apply', need('admin.settings'), h((req) => {
+    if (!CC.configured()) throw new WmsError(409, 'NOT_CONFIGURED', 'Интеграция не настроена');
+    const b = req.body || {};
+    if (b.confirm !== true) throw new WmsError(400, 'CONFIRM', 'Нужно подтверждение');
+    const job = CC.start({ storeId: b.storeId || null, doRacks: b.racks !== false, doItems: b.items !== false, doBatches: b.batches !== false, user: req.user.username });
+    return { ok: true, job: { id: job.id, running: job.running } };
+  }));
+  api.get('/integrations/carsale/cells/status', need('admin.settings'), h(() => CC.status()));
+
   api.get('/integrations/carsale', need('admin.settings', 'catalog.manage'), h(() => CS.status()));
 
   api.put('/integrations/carsale/settings', need('admin.settings'), h((req) => {

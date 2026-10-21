@@ -1,10 +1,11 @@
 // Карта склада: план зон, фасады стеллажей, приёмка и отбор по маршруту.
 import { api, esc, pad, can, toast, fail, bus, pageHead, fmtTs } from '../core.js';
+import { zoneRacks, addrIndex, addrKey, example } from '../addr.js';
 
 const CX = 470, RH = 16, RS = 34, RECV = { x: 220, y: 448 }, SHIP = { x: 716, y: 448 };
 
 export async function mount(root, { params }) {
-  let ZONES = [], SKU = {}, SKUS = [], RACKS = [], RACK = {}, META = {}, S = null;
+  let ZONES = [], SKU = {}, SKUS = [], RACKS = [], RACK = {}, META = {}, S = null, IDX = new Map();
   const U = { tab: 'rack', rack: null, cell: null, hl: new Set(), route: null, asn: null, order: null, plan: null, q: '', skuSel: null, busy: false };
 
   root.innerHTML = `${pageHead('Карта склада', 'Нажмите на стеллаж, чтобы увидеть ячейки. Приёмка и отбор строят маршрут прямо на схеме.')}
@@ -18,7 +19,7 @@ export async function mount(root, { params }) {
         <svg class="map" id="map" viewBox="0 0 940 580" role="img" aria-label="План склада"></svg>
       </section>
       <aside class="panel">
-        <div class="search"><input id="q" type="search" placeholder="Артикул, название или адрес (A-02-07)" autocomplete="off" aria-label="Поиск"></div>
+        <div class="search"><input id="q" type="search" placeholder="Артикул, название или адрес"  autocomplete="off" aria-label="Поиск"></div>
         <div class="ptabs" role="tablist" id="tabs"></div>
         <div class="pbody" id="body"></div>
       </aside>
@@ -27,14 +28,20 @@ export async function mount(root, { params }) {
 
   function buildGeometry() {
     RACKS = []; RACK = {}; META = {};
-    for (const z of ZONES) for (let r = 0; r < z.rows; r++) for (let k = 0; k < z.racks; k++) {
-      const id = `${z.id}-${pad(r + 1)}-${pad(k + 1)}`, x = z.x + k * (z.rw + 2), y = z.y + r * RS;
-      const rk = { id, zone: z.id, z, r, k, x, y, w: z.rw, cx: x + z.rw / 2, ay: y + RH + 9, cells: [] };
-      for (let t = 1; t <= z.tiers; t++) for (let c = 1; c <= z.cells; c++) { const a = `${id}-${t}-${c}`; rk.cells.push(a); META[a] = { rack: id, zone: z.id, tier: t, cell: c }; }
+    for (const z of ZONES) for (const q of zoneRacks(z)) {
+      const { id, r, k } = q, x = z.x + k * (z.rw + 2), y = z.y + r * RS;
+      const rk = { id, zone: z.id, z, r, k, no: q.no, at: q.cell, x, y, w: z.rw, cx: x + z.rw / 2, ay: y + RH + 9, cells: [] };
+      for (let t = 1; t <= z.tiers; t++) for (let c = 1; c <= z.cells; c++) { const a = q.cell(t, c); rk.cells.push(a); META[a] = { rack: id, zone: z.id, tier: t, cell: c }; }
       RACKS.push(rk); RACK[id] = rk;
     }
+    IDX = addrIndex(ZONES);
   }
-  function setState(st) { S = st; SKUS = st.skus; SKU = Object.fromEntries(SKUS.map((s) => [s.art, s])); }
+  let HOME = {};
+  function setState(st) {
+    S = st; SKUS = st.skus; SKU = Object.fromEntries(SKUS.map((s) => [s.art, s]));
+    HOME = {};
+    for (const s of SKUS) for (const a of s.home || []) (HOME[a] = HOME[a] || []).push(s.art);
+  }
   const cellOf = (a) => { const c = S.cells[a]; return c ? { sku: c[0], qty: c[1], blocked: !!c[2] } : { sku: null, qty: 0, blocked: false }; };
   const skuName = (a) => (SKU[a] ? SKU[a].name : a);
   function rackFill(id) { let f = 0, b = 0; for (const a of RACK[id].cells) { const c = cellOf(a); if (c.blocked) b++; if (c.sku && SKU[c.sku]) f += c.qty / SKU[c.sku].per; } return { fill: f / RACK[id].cells.length, blocked: b }; }
@@ -117,29 +124,30 @@ export async function mount(root, { params }) {
         const rs = RACKS.filter((r) => r.zone === z.id), f = rs.reduce((n, r) => n + rackFill(r.id).fill, 0) / rs.length, cells = rs.reduce((n, r) => n + r.cells.length, 0);
         return `<div class="zstat"><b class="mono">${esc(z.id)}</b><div class="bar"><i style="width:${f * 100}%"></i></div><span class="mono" style="text-align:right">${Math.round(f * 100)}%</span></div><div class="note" style="margin:-4px 0 0 36px">${esc(z.sub)} · ${rs.length} стеллажей · ${cells} ячеек · ярусов ${z.tiers}</div>`;
       }).join('')}</div></div>
-      <div class="sec"><h3>Как читать адрес</h3><p class="hint"><span class="mono">A-02-07-3-1</span>: зона A, ряд 02, стеллаж 07, ярус 3 (снизу вверх), ячейка 1 (слева направо).</p></div>`;
+      <div class="sec"><h3>Как читать адрес</h3><p class="hint">${ZONES.some((z) => z.scheme === 'racks') ? '<span class="mono">A-08-01-02</span>: зона A, стеллаж 08, ярус 01 (снизу вверх), ячейка 02 (слева направо).' : '<span class="mono">A-02-07-3-1</span>: зона A, ряд 02, стеллаж 07, ярус 3 (снизу вверх), ячейка 1 (слева направо).'}</p></div>`;
     }
     const rk = RACK[U.rack], z = rk.z, { fill } = rackFill(rk.id);
     let g = `<div class="elev" style="grid-template-columns:22px repeat(${z.cells},minmax(0,1fr))">`;
     for (let t = z.tiers; t >= 1; t--) {
       g += `<span class="tierlbl">${t}</span>`;
       for (let c = 1; c <= z.cells; c++) {
-        const a = `${rk.id}-${t}-${c}`, x = cellOf(a), s = x.sku && SKU[x.sku];
+        const a = rk.at(t, c), x = cellOf(a), s = x.sku && SKU[x.sku];
         g += `<button class="cell${x.sku ? '' : ' empty'}${x.blocked ? ' blocked' : ''}${U.cell === a ? ' on' : ''}${U.hl.has(a) ? ' hl' : ''}" data-cell="${a}" aria-label="Ячейка ${a}">
-          <span class="t">${t}-${c}</span><span class="a">${x.blocked ? 'БЛОК' : x.sku ? esc(x.sku) : 'свободна'}</span>${s ? `<span class="n">${esc(s.name)}</span><div class="bar"><i style="width:${Math.min(100, (x.qty / s.per) * 100)}%"></i></div>` : ''}</button>`;
+          <span class="t">${t}-${c}</span><span class="a">${x.blocked ? 'БЛОК' : x.sku ? esc(x.sku) : HOME[a] ? `<span class="note">за ${esc(HOME[a][0])}</span>` : 'свободна'}</span>${s ? `<span class="n">${esc(s.name)}</span><div class="bar"><i style="width:${Math.min(100, (x.qty / s.per) * 100)}%"></i></div>` : ''}</button>`;
       }
     }
     g += '</div>';
-    return `<div class="row" style="justify-content:space-between"><div><div class="addr">${rk.id}</div><div class="note">${esc(z.title)} · ряд ${pad(rk.r + 1)} · стеллаж ${pad(rk.k + 1)} · заполнено ${Math.round(fill * 100)}%</div></div><button class="btn sm" data-act="closerack">Закрыть</button></div>
+    return `<div class="row" style="justify-content:space-between"><div><div class="addr">${rk.id}</div><div class="note">${esc(z.title)} · ${z.scheme === 'racks' ? `стеллаж ${pad(rk.no)}` : `ряд ${pad(rk.r + 1)} · стеллаж ${pad(rk.k + 1)}`} · заполнено ${Math.round(fill * 100)}%</div></div><button class="btn sm" data-act="closerack">Закрыть</button></div>
       <div class="sec"><h3>Фасад стеллажа</h3>${g}</div>${U.cell ? cellCard() : ''}`;
   }
   function cellCard() {
     const a = U.cell, c = cellOf(a), s = c.sku && SKU[c.sku], m = META[a];
     return `<div class="mcard"><div class="row" style="justify-content:space-between"><span class="addr">${a}</span>${c.blocked ? '<span class="pill bad">заблокирована</span>' : c.sku ? '<span class="pill ok">занята</span>' : '<span class="pill wait">свободна</span>'}</div>
       <dl class="kv"><dt>Ярус / ячейка</dt><dd>${m.tier} / ${m.cell}</dd>
+      ${HOME[a] ? `<dt>Закреплена за</dt><dd class="mono">${HOME[a].map(esc).join(', ')}</dd>` : ''}
       ${c.sku ? `<dt>Артикул</dt><dd class="mono">${esc(c.sku)}</dd><dt>Наименование</dt><dd>${esc(skuName(c.sku))}</dd><dt>Остаток</dt><dd class="mono">${c.qty}${s ? ' из ' + s.per : ''} шт</dd>` : `<dt>Назначение</dt><dd>${esc(ZONES.find((z) => z.id === m.zone).sub)}</dd>`}</dl>
       ${c.sku && can('stock.count') ? `<div class="row"><label for="cnt" class="note">Пересчёт, шт</label><input id="cnt" class="qty mono" type="number" min="0" max="${s ? s.per : ''}" value="${c.qty}"><button class="btn sm" data-act="count">Сохранить</button></div>` : ''}
-      ${c.sku && can('stock.move') ? `<div class="row"><label for="mvTo" class="note">Переместить в</label><input id="mvTo" class="qty mono" style="width:130px" placeholder="${esc(m.zone)}-01-01-1-1"><input id="mvQty" class="qty mono" type="number" min="1" max="${c.qty}" value="${c.qty}" aria-label="Количество"><button class="btn sm" data-act="move">Переместить</button></div>` : ''}
+      ${c.sku && can('stock.move') ? `<div class="row"><label for="mvTo" class="note">Переместить в</label><input id="mvTo" class="qty mono" style="width:130px" placeholder="${esc(example(ZONES.find((z) => z.id === m.zone)))}"><input id="mvQty" class="qty mono" type="number" min="1" max="${c.qty}" value="${c.qty}" aria-label="Количество"><button class="btn sm" data-act="move">Переместить</button></div>` : ''}
       ${can('stock.block') ? `<div class="row"><button class="btn sm" data-act="block">${c.blocked ? 'Снять блокировку' : 'Заблокировать ячейку'}</button></div>` : ''}</div>`;
   }
   function inView() {
@@ -171,7 +179,7 @@ export async function mount(root, { params }) {
     U.route = null; const hl = new Set();
     const p = U.plan && ((U.tab === 'in' && U.plan.kind === 'in' && U.plan.id === U.asn) || (U.tab === 'out' && U.plan.kind === 'out' && U.plan.id === U.order)) ? U.plan : null;
     if (p) { U.route = { stops: p.data.plan.filter((x) => META[x.addr]), home: p.kind === 'in' ? RECV : SHIP }; p.data.plan.forEach((x) => hl.add(x.addr)); }
-    if (U.skuSel) for (const a in S.cells) if (S.cells[a][0] === U.skuSel) hl.add(a);
+    if (U.skuSel) { for (const a in S.cells) if (S.cells[a][0] === U.skuSel) hl.add(a); for (const a of (SKU[U.skuSel] && SKU[U.skuSel].home) || []) hl.add(a); }
     U.hl = hl;
     root.querySelector('#mapTitle').textContent = U.route ? (U.tab === 'in' ? 'Маршрут размещения' : 'Маршрут отбора') : U.skuSel ? 'Ячейки артикула ' + U.skuSel : 'План склада';
   }
@@ -211,8 +219,8 @@ export async function mount(root, { params }) {
     if (A === 'block') act(`/api/cells/${U.cell}/block`, { blocked: !cellOf(U.cell).blocked }, cellOf(U.cell).blocked ? 'Блокировка снята' : 'Ячейка заблокирована');
     if (A === 'count') act(`/api/cells/${U.cell}/count`, { qty: parseInt(root.querySelector('#cnt').value, 10) }, 'Пересчёт сохранён');
     if (A === 'move') {
-      const to = root.querySelector('#mvTo').value.trim().toUpperCase(), qty = parseInt(root.querySelector('#mvQty').value, 10);
-      if (!META[to]) { toast('Укажите полный адрес ячейки, например ' + META[U.cell].zone + '-01-01-1-1', true); return; }
+      const hit = IDX.get(addrKey(root.querySelector('#mvTo').value)), to = hit && hit.kind === 'cell' ? hit.id : '', qty = parseInt(root.querySelector('#mvQty').value, 10);
+      if (!META[to]) { toast('Укажите полный адрес ячейки, например ' + example(ZONES.find((z) => z.id === META[U.cell].zone)), true); return; }
       act('/api/move', { from: U.cell, to, qty }, `Перемещено в ${to}`).then(() => { if (cellOf(to).sku) { U.rack = META[to].rack; U.cell = to; render(); } });
     }
     if (A === 'putaway') act(`/api/receipts/${U.asn}/putaway`, null, 'Размещение проведено');
@@ -220,11 +228,8 @@ export async function mount(root, { params }) {
   });
   const qi = root.querySelector('#q');
   qi.addEventListener('input', () => {
-    const v = qi.value.trim(), m = v.toUpperCase().match(/^([A-Z0-9]+)-?(\d{1,2})-?(\d{1,2})(?:-?(\d+)-?(\d+))?$/);
-    if (m) {
-      const id = `${m[1]}-${pad(m[2])}-${pad(m[3])}`;
-      if (RACK[id]) { U.rack = id; U.cell = m[4] ? `${id}-${m[4]}-${m[5]}` : null; if (U.cell && !META[U.cell]) U.cell = null; U.tab = 'rack'; U.q = ''; U.skuSel = null; render(); return; }
-    }
+    const v = qi.value.trim(), hit = /\d/.test(v) && /[-\s]/.test(v) ? IDX.get(addrKey(v)) : null;
+    if (hit) { U.rack = hit.kind === 'rack' ? hit.id : hit.rack; U.cell = hit.kind === 'cell' ? hit.id : null; U.tab = 'rack'; U.q = ''; U.skuSel = null; render(); return; }
     U.q = v; if (!v) U.skuSel = null; render();
   });
 

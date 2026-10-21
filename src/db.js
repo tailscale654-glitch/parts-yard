@@ -167,6 +167,10 @@ const MIGRATIONS = [
   (db) => {
     db.exec('UPDATE orders SET dealer_id = NULL; DELETE FROM dealer;');
   },
+  // 6 — закреплённые ячейки артикула (JSON-список адресов): туда товар размещается в первую очередь
+  (db) => {
+    db.exec('ALTER TABLE sku ADD COLUMN home TEXT');
+  },
 ];
 
 function now() {

@@ -27,6 +27,9 @@ const HELP = `WarehouseOS — адресный склад запчастей, к
   export-stock <файл.csv>               остатки по адресам
   backup <файл.db>                      резервная копия базы на ходу
   dealer-list                           справочник дилеров (из Carsale)
+  import-cells <файл.xlsx|csv> [--clear-cells]
+                                        ячейки склада: артикул → ячейка (A-08-01-02, B-01-03-02\\03);
+                                        топология строится по файлу, ячейки закрепляются за артикулами
   carsale-sync                          забрать каталог, остатки и дилеров из Carsale сейчас
   carsale-status                        состояние интеграции и последние синхронизации
 
@@ -219,6 +222,25 @@ async function main() {
       }
       for (const w of s.warnings) console.log('Внимание: ' + w);
       if (r.partial) console.log('Частично не получилось: ' + r.error);
+      break;
+    }
+    case 'import-cells': {
+      const CELLS = require('./src/cells');
+      const { buildLayout } = require('./src/layout');
+      const file = pos[0];
+      if (!file) die('Укажите файл: parts-yard import-cells ячейки.xlsx');
+      const table = /\.xlsx$/i.test(file) ? require('./src/xlsx').readXlsx(fs.readFileSync(file))
+        : fs.readFileSync(file, 'utf8').replace(/^\uFEFF/, '').split(/\r?\n/).map((l) => l.split(l.includes('\t') ? '\t' : ';'));
+      const impact = (zones) => {
+        const next = buildLayout(zones);
+        const lost = db.prepare('SELECT addr FROM cell WHERE sku IS NOT NULL OR blocked = 1').all().filter((c) => !next.meta.has(c.addr));
+        return { lost, inv: [], skuZones: [] };
+      };
+      const a = CELLS.analyze(db, L, CELLS.rowsFromTable(table), impact);
+      console.log(`Артикулов с ячейкой: ${a.stats.ok}, ячеек: ${a.stats.cells}, зон: ${a.zones.map((z) => z.id).join(', ')}, новых в каталоге: ${a.stats.newSkus}`);
+      for (const p of a.problems) console.log(`  строка ${p.line}: ${p.art || '—'} «${p.cell}» — ${p.error}`);
+      const r = CELLS.apply(db, L, a, { user: 'консоль', clearCells: !!opt['clear-cells'] });
+      console.log(`Готово: ${r.zones} зон, ${r.cells} ячеек, артикулов ${r.skus} (новых ${r.added}). Перезапустите службу: sudo systemctl restart parts-yard`);
       break;
     }
     case 'dealer-list': {

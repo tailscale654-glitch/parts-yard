@@ -1,5 +1,9 @@
 'use strict';
 // Топология склада: зоны → ряды → стеллажи → ярусы → ячейки.
+// Две схемы адресов:
+//   scheme "rows"  (по умолчанию) — ЗОНА-РЯД-СТЕЛЛАЖ-ЯРУС-ЯЧЕЙКА, например A-01-02-3-1;
+//   scheme "racks" — ЗОНА-СТЕЛЛАЖ-ЯРУС-ЯЧЕЙКА, например A-08-01-02 (стеллажи сквозной нумерации с start;
+//                    rows и racks тогда задают только раскладку стеллажей на схеме: rows рядов по racks).
 // Берётся из базы (если её меняли в админке) или из layout.json.
 // Координаты совпадают со схемой 940×580 в веб-интерфейсе и задают порядок обхода.
 const fs = require('fs');
@@ -11,6 +15,29 @@ const RS = 34;    // шаг рядов
 function pad(n) { return String(n).padStart(2, '0'); }
 
 const LIMITS = { rows: [1, 40], racks: [1, 60], tiers: [1, 12], cells: [1, 12], rw: [8, 120], x: [0, 940], y: [0, 580] };
+
+// Все ячейки зоны: адрес, стеллаж, ряд на схеме, ярус, ячейка
+function zoneCells(z) {
+  const out = [];
+  for (let r = 0; r < z.rows; r++) {
+    for (let k = 0; k < z.racks; k++) {
+      const racks = z.scheme === 'racks';
+      const rackNo = racks ? (z.start || 1) + r * z.racks + k : k + 1;
+      const rack = racks ? `${z.id}-${pad(rackNo)}` : `${z.id}-${pad(r + 1)}-${pad(k + 1)}`;
+      for (let t = 1; t <= z.tiers; t++) {
+        for (let c = 1; c <= z.cells; c++) {
+          out.push({ addr: racks ? `${rack}-${pad(t)}-${pad(c)}` : `${rack}-${t}-${c}`, rack, r, k, rackNo, t, c });
+        }
+      }
+    }
+  }
+  return out;
+}
+// Адрес в виде, который пишут люди: «a-016-1-01», «A 16 01 01» → ключ для поиска «A-16-1-1»
+function addrKey(s) {
+  const parts = String(s || '').toUpperCase().replace(/[\s_.]+/g, '-').split('-').filter(Boolean);
+  return parts.map((p) => (/^\d+$/.test(p) ? String(Number(p)) : p)).join('-');
+}
 
 function validateZones(zones) {
   if (!Array.isArray(zones) || !zones.length) throw new Error('Нужна хотя бы одна зона');
@@ -28,6 +55,12 @@ function validateZones(zones) {
       out[k] = v;
     }
     out.prefer = z.prefer === 'middle' ? 'middle' : 'low';
+    if (z.scheme === 'racks') {
+      out.scheme = 'racks';
+      const st = Number(z.start || 1);
+      if (!Number.isInteger(st) || st < 1 || st > 999) throw new Error(`Зона ${id}: первый номер стеллажа — от 1 до 999`);
+      out.start = st;
+    }
     const w = out.racks * (out.rw + 2) - 2, h = (out.rows - 1) * RS + RH;
     if (out.x + w > 930 || out.y + h > 455) warnings.push(`Зона ${id} выходит за поле схемы (${out.x + w}×${out.y + h}, доступно 930×455)`);
     return out;
@@ -47,23 +80,22 @@ function buildLayout(zones) {
   const racks = new Map();
   const meta = new Map();
   const zoneById = new Map();
+  const keys = new Map();
   for (const z of zones) {
     zoneById.set(z.id, z);
-    for (let r = 0; r < z.rows; r++) {
-      for (let k = 0; k < z.racks; k++) {
-        const id = `${z.id}-${pad(r + 1)}-${pad(k + 1)}`;
-        const x = z.x + k * (z.rw + 2);
-        const y = z.y + r * RS;
-        racks.set(id, { zone: z.id, row: r + 1, cx: x + z.rw / 2, ay: y + RH + 9 });
-        for (let t = 1; t <= z.tiers; t++) {
-          for (let c = 1; c <= z.cells; c++) {
-            meta.set(`${id}-${t}-${c}`, { rack: id, zone: z.id, row: r + 1, tier: t, tiers: z.tiers, prefer: z.prefer || 'low' });
-          }
-        }
+    for (const x of zoneCells(z)) {
+      if (!racks.has(x.rack)) {
+        const rx = z.x + x.k * (z.rw + 2), ry = z.y + x.r * RS;
+        racks.set(x.rack, { zone: z.id, row: x.r + 1, no: x.rackNo, cx: rx + z.rw / 2, ay: ry + RH + 9 });
+        keys.set(addrKey(x.rack), x.rack);
       }
+      meta.set(x.addr, { rack: x.rack, zone: z.id, row: x.r + 1, tier: x.t, cell: x.c, tiers: z.tiers, prefer: z.prefer || 'low' });
+      keys.set(addrKey(x.addr), x.addr);
     }
   }
-  return { zones, zoneById, racks, meta };
+  // адрес или стеллаж по тому, как его написали люди
+  const find = (s) => keys.get(addrKey(s)) || null;
+  return { zones, zoneById, racks, meta, find };
 }
 
 function readLayoutFile(file) {
@@ -81,7 +113,7 @@ function resolveLayout(db, file) {
 // Подменяет содержимое объекта L на месте: все модули держат ссылку на тот же объект
 function applyLayout(L, zones) {
   const n = buildLayout(zones);
-  L.zones = n.zones; L.zoneById = n.zoneById; L.racks = n.racks; L.meta = n.meta;
+  L.zones = n.zones; L.zoneById = n.zoneById; L.racks = n.racks; L.meta = n.meta; L.find = n.find;
 }
 
 function makeGeometry(L) {
@@ -105,4 +137,4 @@ function makeGeometry(L) {
 
 function zoneOf(addr) { return String(addr || '').split('-')[0]; }
 
-module.exports = { buildLayout, validateZones, readLayoutFile, resolveLayout, applyLayout, makeGeometry, zoneOf };
+module.exports = { buildLayout, validateZones, readLayoutFile, resolveLayout, applyLayout, makeGeometry, zoneOf, zoneCells, addrKey, RS, RH };

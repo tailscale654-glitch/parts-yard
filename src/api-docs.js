@@ -46,8 +46,20 @@ module.exports = function docsApi(api, { db, L, INV, need, h, mutation, WmsError
       const stocked = db.prepare('SELECT COUNT(*) FROM cell WHERE sku = ?').pluck().get(r.art);
       if (stocked) throw new WmsError(409, 'SKU_STOCKED', `Нельзя сменить зону: ${r.art} лежит в ${stocked} ячейках зоны ${exists.zone}. Сначала переместите товар.`);
     }
+    // закреплённые ячейки: «A-16-01-01, A-16-01-02» в любом написании
+    let home;
+    if (req.body.home !== undefined) {
+      const list = String(req.body.home || '').split(/[,;\n]+/).map((x) => x.trim()).filter(Boolean);
+      home = [];
+      for (const x of list) {
+        const a = L.find(x);
+        if (!a || !L.meta.has(a)) throw new WmsError(400, 'BAD_HOME', `Ячейки ${x} нет на складе`);
+        if (!home.includes(a)) home.push(a);
+      }
+    }
     db.transaction(() => {
       upsertSku.run(r);
+      if (home) db.prepare('UPDATE sku SET home = ? WHERE art = ?').run(home.length ? JSON.stringify(home) : null, r.art);
       if (exists && exists.zone !== r.zone) db.prepare('UPDATE sku SET zone_manual = 1 WHERE art = ?').run(r.art);
       audit(db, req.user.username, exists ? 'Артикул изменён' : 'Артикул добавлен', r);
       bump();

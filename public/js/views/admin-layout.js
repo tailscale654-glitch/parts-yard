@@ -21,10 +21,12 @@ export async function mount(root) {
 
   function table() {
     root.querySelector('#src').textContent = source === 'database' ? 'Изменена в админке' : 'Из файла layout.json';
-    root.querySelector('#zt').innerHTML = `<thead><tr>${COLS.map(([, l]) => `<th>${l}</th>`).join('')}<th>Заполнять</th><th class="r">Ячеек</th><th class="r">С товаром</th><th></th></tr></thead>
+    root.querySelector('#zt').innerHTML = `<thead><tr>${COLS.map(([, l]) => `<th>${l}</th>`).join('')}<th title="ЗОНА-РЯД-СТЕЛЛАЖ-ЯРУС-ЯЧЕЙКА или ЗОНА-СТЕЛЛАЖ-ЯРУС-ЯЧЕЙКА">Адрес</th><th title="Номер первого стеллажа зоны">С №</th><th>Заполнять</th><th class="r">Ячеек</th><th class="r">С товаром</th><th></th></tr></thead>
       <tbody>${zones.map((z, i) => {
         const st = stats.find((s) => s.id === z.id);
         return `<tr data-i="${i}">${COLS.map(([k, , t, w]) => `<td><input class="in${t === 'number' ? ' mono' : ''}" data-k="${k}" type="${t}" value="${esc(z[k] ?? '')}" ${w ? `style="width:${w}px"` : ''} aria-label="${k}"></td>`).join('')}
+          <td><select class="in" data-k="scheme" title="Как записан адрес ячейки"><option value="rows" ${z.scheme !== 'racks' ? 'selected' : ''}>A-01-02-3-1</option><option value="racks" ${z.scheme === 'racks' ? 'selected' : ''}>A-08-01-02</option></select></td>
+          <td><input class="in mono" data-k="start" type="number" min="1" value="${esc(z.start || 1)}" style="width:64px" ${z.scheme === 'racks' ? '' : 'disabled'} aria-label="Номер первого стеллажа"></td>
           <td><select class="in" data-k="prefer"><option value="low" ${z.prefer !== 'middle' ? 'selected' : ''}>снизу</option><option value="middle" ${z.prefer === 'middle' ? 'selected' : ''}>с середины</option></select></td>
           <td class="r mono">${fmt(z.rows * z.racks * z.tiers * z.cells || 0)}</td><td class="r mono">${st ? fmt(st.stocked) : '—'}</td>
           <td><button class="btn ghost sm danger" data-rm="${i}" aria-label="Удалить зону">${icon('trash')}</button></td></tr>`;
@@ -43,7 +45,7 @@ export async function mount(root) {
     }
     root.querySelector('#prev').innerHTML = s;
   }
-  const clean = () => zones.map((z) => ({ ...z, id: String(z.id || '').toUpperCase(), ...Object.fromEntries(['rows', 'racks', 'tiers', 'cells', 'rw', 'x', 'y'].map((k) => [k, Number(z[k])])) }));
+  const clean = () => zones.map((z) => ({ ...z, id: String(z.id || '').toUpperCase(), ...Object.fromEntries(['rows', 'racks', 'tiers', 'cells', 'rw', 'x', 'y', 'start'].map((k) => [k, Number(z[k] || (k === 'start' ? 1 : 0))])) }));
   async function runCheck() {
     try {
       check = await api('/api/admin/layout/preview', { method: 'POST', body: { zones: clean() } });
@@ -62,7 +64,7 @@ export async function mount(root) {
     zones[+tr.dataset.i][e.target.dataset.k] = e.target.value;
     preview(); autoCheck();
   });
-  root.querySelector('#zt').addEventListener('change', (e) => { if (e.target.tagName === 'INPUT' && e.target.type === 'number') table(); });
+  root.querySelector('#zt').addEventListener('change', (e) => { if ((e.target.tagName === 'INPUT' && e.target.type === 'number') || e.target.dataset.k === 'scheme') table(); });
   root.querySelector('#zt').addEventListener('click', (e) => {
     const b = e.target.closest('[data-rm]'); if (!b) return;
     zones.splice(+b.dataset.rm, 1); table(); preview(); autoCheck();

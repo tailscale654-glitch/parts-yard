@@ -1,8 +1,9 @@
 // Оболочка WarehouseOS: меню по правам, маршруты, опрос сервера, профиль,
 // быстрый поиск (Ctrl K / ⌘K) и нижняя панель вкладок на телефоне.
 import { S, can, api, esc, icon, h, toast, fail, modal, bus } from './core.js';
+import { addrIndex, addrKey } from './addr.js';
 
-const V = '?v=8';
+const V = '?v=9';
 const ROUTES = [
   { grp: 'Обзор' },
   { path: 'dashboard', title: 'Дашборды', short: 'Обзор', icon: 'dash', perm: ['dashboard.view'], mod: './views/dashboard.js' },
@@ -19,6 +20,7 @@ const ROUTES = [
   { path: 'admin/users', title: 'Пользователи', icon: 'users', perm: ['admin.users'], mod: './views/admin-users.js' },
   { path: 'admin/roles', title: 'Роли и права', icon: 'shield', perm: ['admin.roles'], mod: './views/admin-roles.js' },
   { path: 'admin/layout', title: 'Топология', icon: 'grid', perm: ['admin.layout'], mod: './views/admin-layout.js' },
+  { path: 'admin/cells', title: 'Ячейки склада', icon: 'pin', perm: ['admin.layout'], mod: './views/admin-cells.js' },
   { path: 'admin/settings', title: 'Настройки', icon: 'gear', perm: ['admin.settings'], mod: './views/admin-settings.js' },
   { path: 'admin/carsale', title: 'Интеграция Carsale', icon: 'link', perm: ['admin.settings', 'catalog.manage'], mod: './views/admin-carsale.js' },
   { path: 'admin/audit', title: 'Журнал аудита', icon: 'log', perm: ['admin.audit'], mod: './views/admin-audit.js' },
@@ -135,20 +137,13 @@ function mark(text, q) {
   const t = String(text ?? ''), i = q ? t.toLowerCase().indexOf(q) : -1;
   return i < 0 ? esc(t) : `${esc(t.slice(0, i))}<mark>${esc(t.slice(i, i + q.length))}</mark>${esc(t.slice(i + q.length))}`;
 }
-const pad2 = (n) => String(n).padStart(2, '0');
-
-// адрес вида A-01-02 (стеллаж) или A-01-02-3-4 (ячейка); разделители можно опускать пробелами/точками
+// адрес в любом написании: «A-16-01-01», «a 016 1 1», «A-08» (стеллаж)
+let ADDR_IDX = null, ADDR_ZONES = null;
 function parseAddr(q, zones) {
-  const p = q.toUpperCase().trim().split(/[-\s.]+/).filter(Boolean);
-  if (p.length !== 3 && p.length !== 5) return null;
-  const z = zones.find((x) => x.id === p[0]);
-  if (!z || !p.slice(1).every((x) => /^\d{1,3}$/.test(x))) return null;
-  const [r, k, t, c] = p.slice(1).map(Number);
-  if (r < 1 || r > z.rows || k < 1 || k > z.racks) return null;
-  const rack = `${z.id}-${pad2(r)}-${pad2(k)}`;
-  if (p.length === 3) return { kind: 'rack', id: rack, z };
-  if (t < 1 || t > z.tiers || c < 1 || c > z.cells) return null;
-  return { kind: 'cell', id: `${rack}-${t}-${c}`, z };
+  if (!/\d/.test(q) || !zones.length) return null;
+  if (ADDR_ZONES !== zones) { ADDR_IDX = addrIndex(zones); ADDR_ZONES = zones; }
+  const hit = ADDR_IDX.get(addrKey(q.replace(/[\\/]/g, '-')));
+  return hit ? { kind: hit.kind, id: hit.id, z: hit.z } : null;
 }
 
 function palSearch(raw, d) {
@@ -221,7 +216,7 @@ function openPalette() {
       <div class="pin">${icon('search')}<input type="text" placeholder="Артикул, адрес, заказ или раздел" aria-label="Что найти" autocomplete="off" spellcheck="false"
         role="combobox" aria-expanded="true" aria-controls="palRes" aria-autocomplete="list"><kbd>Esc</kbd><button type="button" class="pcancel">Отмена</button></div>
       <div class="res" id="palRes" role="listbox"></div>
-      <div class="foot"><span><kbd>↑</kbd> <kbd>↓</kbd> выбрать</span><span><kbd>Enter</kbd> открыть</span><span>адрес: <span class="mono">A-01-02-3-1</span></span></div>
+      <div class="foot"><span><kbd>↑</kbd> <kbd>↓</kbd> выбрать</span><span><kbd>Enter</kbd> открыть</span><span>адрес: <span class="mono">A-08-01-02</span></span></div>
     </div></div>`);
   const inp = back.querySelector('input'), res = back.querySelector('.res');
   let flat = [], sel = 0, data = PAL.data && Date.now() - PAL.at < 30000 ? PAL.data : null;

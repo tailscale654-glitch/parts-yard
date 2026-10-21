@@ -14,15 +14,18 @@ export async function mount(root, { params = {} } = {}) {
     <div class="card"><div class="tw" id="tbl"></div></div>`;
 
   const status = (r) => (r.qty === 0 ? (r.source === 'carsale' && (r.ext_qty || 0) + (r.ext_reserved || 0) > 0 ? 'не размещено' : 'нет на складе') : r.min_qty && r.qty < r.min_qty ? 'ниже минимума' : 'в норме');
+  const homeOf = (r) => { try { return JSON.parse(r.home || '[]'); } catch (e) { return []; } };
+  const homeTxt = (r) => { const h = homeOf(r); return h.length ? h[0] + (h.length > 1 ? ` +${h.length - 1}` : '') : ''; };
   function draw() {
+    const hasHome = items.some((r) => homeOf(r).length);
     const cs = items.some((r) => r.source === 'carsale');
-    const list = items.filter((r) => (!q || r.art.toLowerCase().includes(q) || r.name.toLowerCase().includes(q)) && (!zone || r.zone === zone) && (!onlyLow || status(r) !== 'в норме'));
+    const list = items.filter((r) => (!q || r.art.toLowerCase().includes(q) || r.name.toLowerCase().includes(q) || String(r.home || '').toLowerCase().includes(q)) && (!zone || r.zone === zone) && (!onlyLow || status(r) !== 'в норме'));
     table(root.querySelector('#tbl'), {
       columns: [{ key: 'art', label: 'Артикул', mono: true }, { key: 'name', label: 'Наименование' }, { key: 'zone', label: 'Зона' },
-        { key: 'per', label: 'В ячейку', align: 'r' }, { key: 'min_qty', label: 'Минимум', align: 'r' }, { key: 'qty', label: 'В ячейках', align: 'r' },
+        ...(hasHome ? [{ key: 'homeTxt', label: 'Закреплено', mono: true }] : []), { key: 'per', label: 'В ячейку', align: 'r' }, { key: 'min_qty', label: 'Минимум', align: 'r' }, { key: 'qty', label: 'В ячейках', align: 'r' },
         { key: 'cells', label: 'Ячеек', align: 'r' }, ...(cs ? [{ key: 'ext_total', label: 'В Carsale', align: 'r' }, { key: 'price', label: 'Цена', align: 'r' }] : []),
         { key: 'status', label: 'Статус', type: 'status' }],
-      rows: list.map((r) => ({ ...r, status: status(r), ext_total: r.source === 'carsale' ? (r.ext_qty || 0) + (r.ext_reserved || 0) : '', price: r.price ?? '' })),
+      rows: list.map((r) => ({ ...r, homeTxt: homeTxt(r), status: status(r), ext_total: r.source === 'carsale' ? (r.ext_qty || 0) + (r.ext_reserved || 0) : '', price: r.price ?? '' })),
       render: { ext_total: (v, r) => (v === '' ? '<span class="muted">—</span>' : `<span class="${v !== r.qty ? 'err' : ''}">${fmt(v)}</span>`) },
       totals: { qty: list.reduce((n, r) => n + r.qty, 0), cells: list.reduce((n, r) => n + r.cells, 0) },
       empty: 'Ничего не найдено',
@@ -40,6 +43,7 @@ export async function mount(root, { params = {} } = {}) {
         <label class="field"><span>Вместимость ячейки, шт</span><input class="in" id="cper" type="number" min="1" value="${r ? r.per : ''}" ${m ? '' : 'readonly'}><span class="hint">Сколько штук помещается в одну ячейку</span></label>
         <label class="field"><span>Минимальный остаток, шт</span><input class="in" id="cmin" type="number" min="0" value="${r ? r.min_qty : 0}" ${m ? '' : 'readonly'}><span class="hint">Ниже — попадёт в «Требует внимания». 0 — не следить</span></label>
       </div>
+      <label class="field"><span>Закреплённые ячейки</span><input class="in mono" id="chome" value="${esc(r && r.home ? (() => { try { return JSON.parse(r.home).join(', '); } catch (e) { return ''; } })() : '')}" placeholder="A-16-01-01, A-16-01-02" ${m ? '' : 'readonly'}><span class="hint">Сюда артикул размещается в первую очередь; первая ячейка уходит в Carsale как место хранения</span></label>
       ${r ? `<div class="infobox">В ячейках <b>${r.qty}</b> шт (${r.cells} яч.). <a href="#/map?sku=${encodeURIComponent(r.art)}">Показать на карте</a></div>` : ''}
       ${r && r.source === 'carsale' ? `<div class="infobox"><b>Из Carsale</b> · на складе ${fmt(r.ext_qty || 0)} шт${r.ext_reserved ? `, бронь ${fmt(r.ext_reserved)}` : ''} · тип ${esc(r.ext_type || '—')}${r.price ? ` · цена ${fmt(r.price)}` : ''}${r.unit ? ` · ${esc(r.unit)}` : ''}${r.brand ? ` · ${esc(r.brand)}` : ''}${r.ext_location ? `<br>Место в Carsale: <span class="mono">${esc(r.ext_location)}</span>` : ''}${r.ext_active ? '' : '<br><span class="err">В Carsale неактивен</span>'}
         <div class="note" style="margin-top:4px">Название и цена обновляются при синхронизации. Зону и вместимость можно менять здесь — синхронизация их не перезапишет.</div></div>` : ''}</div>`);
@@ -51,7 +55,7 @@ export async function mount(root, { params = {} } = {}) {
     acts.push({ label: m ? 'Отмена' : 'Закрыть' });
     if (m) acts.push({ label: 'Сохранить', kind: 'pri', onClick: async ({ el }) => {
       await api('/api/catalog', { method: 'POST', body: { isNew, art: el.querySelector('#cart').value.trim(), name: el.querySelector('#cname').value, zone: el.querySelector('#czone').value,
-        per: Number(el.querySelector('#cper').value), min_qty: Number(el.querySelector('#cmin').value || 0) } });
+        per: Number(el.querySelector('#cper').value), min_qty: Number(el.querySelector('#cmin').value || 0), home: el.querySelector('#chome').value } });
       toast('Сохранено'); bus.dispatchEvent(new Event('changed')); load();
     } });
     const md = modal({ title: isNew ? 'Новый артикул' : r.art, sub: r ? esc(r.name) : '', body, actions: acts });

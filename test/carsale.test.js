@@ -15,7 +15,7 @@ const { createClient } = require('../src/carsale');
 const LAYOUT_FILE = path.join(__dirname, '..', 'layout.json');
 let mock, mockBase, server, base, db, dir, L, app;
 const jars = {};
-const M = { password: 'secret', token: 'T1', calls: 0, expireAfter: Infinity, rows: [], directory: [], dealers: [] };
+const M = { password: 'secret', token: 'T1', calls: 0, expireAfter: Infinity, rows: [], directory: [], dealers: [], racks: [], edits: [], moves: [] };
 // как настоящий get_tmc_dealer_list: вместе с карточкой отдаются логины и ключи интеграций — их хранить нельзя
 const dealerRow = (id, name, code, region, state = 'A') => ({ dealer_id: id, region_id: '1', name, state, address: 'ул. Мохичехра, 48а', code,
   phone_number: '+998 90 000 00 00', fax: '', note: '', name_uz: name, filial_id: '3641522', client_id_faktura: '2661', username: 'dealer@mail.example',
@@ -66,6 +66,25 @@ before(async () => {
     if (b.url === '/b/tmc_hybrid&get_tmc_store_list') return res.json({ 0: { id: '381', name: 'JAC Motors Toshkent Store', code: 'JMTS', state: 'A' }, 1: { id: '521', name: 'Spare Parts Customs Warehouse', code: 'SPCW', state: 'P' } });
     if (b.url === '/b/tmc_hybrid&get_tmc_types') return res.json({ status: '200', data: ['A', 'B', 'C', 'D', 'TOOLS'].map((n, i) => ({ id: String(422 + i), name_: n })) });
     if (b.url === '/b/tmc_hybrid&get_tmc_dealer_list') return res.json(M.dealers);
+    if (b.url === '/b/tmc_hybrid&get_rack_directory') return res.json({ status: '200', data: M.racks });
+    if (b.url === '/b/tmc_hybrid&add_rack') {
+      if (M.racks.some((r) => r.name_ === b.name_ && r.id_store === b.id_store)) return res.json({ error: 'Proxy error', details: 'ORA-20001: AP: ячейка уже есть' });
+      const id = String(9000 + M.racks.length); M.racks.push({ id, name_: b.name_, id_store: b.id_store, name_store: 'JAC Motors Toshkent Store', state: b.state });
+      return res.json({ message: 'ok' });
+    }
+    if (b.url === '/b/tmc_hybrid&edit_directory') {
+      const d = M.directory.find((x) => String(x.id) === String(b.id));
+      if (!d) return res.json({ error: 'Proxy error', details: 'no item' });
+      M.edits.push(b);
+      d.id_rack = String(b.id_rack); d.name_rack = (M.racks.find((r) => r.id === String(b.id_rack)) || {}).name_;
+      return res.json({ message: 'ok' });
+    }
+    if (b.url === '/b/tmc_hybrid&change_rack') {
+      const r = M.rows.find((x) => x.id === b.id);
+      M.moves.push(b);
+      r.cell_name = (M.racks.find((x) => x.id === b.id_rack) || {}).name_;
+      return res.json({ message: 'Moved successfully' });
+    }
     if (b.url === '/b/monster/bot&table_dealers') return res.json([{ dealer_id: '1937', dealer_name: '"Asia Motor" MChJ' }]);
     if (b.url === '/b/tmc_hybrid&get_tmc_stock_list') {
       let rows = M.rows;
@@ -257,4 +276,83 @@ test('отчёт, метрики, журнал синхронизаций, ош�
   assert.strictEqual(st.data.runs[1].status, 'ok');
   assert.ok(!JSON.stringify(st.data).includes('secret'), 'пароль никогда не уходит в браузер');
   assert.strictEqual(st.data.stores.length, 2);
+});
+
+test('ячейки склада из Excel и запись ячеек в Carsale', async () => {
+  const C = require('../src/cells');
+  assert.deepStrictEqual(C.parseCell('B-01-03-02\\03').list, ['B-01-03-02', 'B-01-03-03']);
+  assert.deepStrictEqual(C.parseCell('A-016-01-01').list, ['A-16-01-01']);
+  assert.deepStrictEqual(C.parseCell('A-01-01-01\\03').list, ['A-01-01-01', 'A-01-01-02', 'A-01-01-03'], 'два номера по возрастанию — диапазон');
+  assert.deepStrictEqual(C.parseCell('B-12\\07-01-01').list, ['B-12-01-01', 'B-07-01-01'], 'по убыванию — перечисление');
+  assert.strictEqual(C.parseCell('D/Z-01-02-01').zone, 'DZ');
+  assert.strictEqual(C.parseCell('А-08-01-01').zone, 'A', 'кириллическая А');
+  assert.ok(C.parseCell('D/Z---').error);
+
+  const rows = [['№', 'Артикул', 'Номенклатура Ru', 'Номенклатура EN', 'Ячейка'],
+    ['1', 'P0001-B', 'Деталь 1', 'PART 1', 'B-01-02-01'], ['2', 'P0002-C', 'Деталь 2', 'PART 2', 'A-016-01-01\\02'],
+    ['3', 'P0003-D', 'Деталь 3', 'PART 3', 'D/Z-01-02-01'], ['4', 'NEW-1', 'Новая', 'NEW', 'B-03-04-02'], ['5', 'BAD-1', 'Плохая', 'BAD', 'D/Z---']];
+  const objs = C.rowsFromTable(rows);
+  const pv = await as('boss', 'POST', '/api/admin/cells/preview', { rows: objs });
+  assert.strictEqual(pv.status, 200, JSON.stringify(pv.data));
+  assert.strictEqual(pv.data.stats.ok, 4);
+  assert.strictEqual(pv.data.problems.length, 1);
+  assert.deepStrictEqual(pv.data.zones.map((z) => z.id).sort(), ['A', 'B', 'DZ']);
+  assert.strictEqual(pv.data.zones.find((z) => z.id === 'DZ').title, 'Зона D/Z');
+  assert.strictEqual((await as('keeper', 'POST', '/api/admin/cells/apply', { rows: objs })).status, 403);
+  const ap = await as('boss', 'POST', '/api/admin/cells/apply', { rows: objs, clearCells: true, confirmClear: true });
+  assert.strictEqual(ap.status, 200, JSON.stringify(ap.data));
+  assert.strictEqual(ap.data.added, 1, 'артикул, которого не было в каталоге, добавлен');
+  assert.strictEqual(db.prepare("SELECT home FROM sku WHERE art = 'P0002-C'").pluck().get(), '["A-16-01-01","A-16-01-02"]');
+  assert.strictEqual(db.prepare("SELECT zone FROM sku WHERE art = 'P0002-C'").pluck().get(), 'A');
+  const lay = (await as('keeper', 'GET', '/api/layout')).data;
+  assert.ok(lay.zones.every((z) => z.scheme === 'racks'));
+  // размещение идёт в закреплённую ячейку
+  await as('boss', 'POST', '/api/receipts', { doc: 'CELL-1', gate: '1', lines: [{ art: 'P0002-C', qty: 3 }] });
+  const rid = db.prepare("SELECT id FROM receipt WHERE doc = 'CELL-1'").pluck().get();
+  const plan = await as('keeper', 'GET', `/api/plan/putaway/${rid}`);
+  assert.strictEqual(plan.data.plan[0].addr, 'A-16-01-01');
+  // в каталоге ячейки можно поправить в любом написании
+  assert.strictEqual((await as('boss', 'POST', '/api/catalog', { art: 'NEW-1', name: 'Новая', zone: 'B', per: 5, home: 'b-3-4-2, B 03 04 01' })).status, 200);
+  assert.strictEqual(db.prepare("SELECT home FROM sku WHERE art = 'NEW-1'").pluck().get(), '["B-03-04-02","B-03-04-01"]');
+  assert.strictEqual((await as('boss', 'POST', '/api/catalog', { art: 'NEW-1', name: 'Новая', zone: 'B', per: 5, home: 'Z-99-01-01' })).data.code, 'BAD_HOME');
+
+  // Carsale: план ничего не меняет
+  M.racks = [{ id: '8001', name_: 'B-01-02-01', id_store: '381', name_store: 'JAC Motors Toshkent Store', state: 'A' }];
+  const before = JSON.stringify(M.directory);
+  const p1 = await as('boss', 'GET', '/api/integrations/carsale/cells/plan?store=381');
+  assert.strictEqual(p1.status, 200, JSON.stringify(p1.data));
+  assert.strictEqual(p1.data.racks.create, 5, 'A-16-01-01, A-16-01-02, DZ-01-02-01 и две ячейки NEW-1; B-01-02-01 уже есть');
+  assert.strictEqual(p1.data.items.update, 3);
+  assert.strictEqual(p1.data.items.missing, 1, 'NEW-1 нет в Carsale');
+  assert.ok(p1.data.batches.move > 0);
+  assert.strictEqual(JSON.stringify(M.directory), before);
+  assert.strictEqual(M.edits.length + M.moves.length, 0);
+  assert.strictEqual((await as('keeper', 'GET', '/api/integrations/carsale/cells/plan')).status, 403);
+  assert.strictEqual((await as('boss', 'POST', '/api/integrations/carsale/cells/apply', {})).data.code, 'CONFIRM');
+
+  // запись
+  const src = JSON.parse(JSON.stringify(M.directory.find((d) => d.code_ === 'P0002-C')));
+  const go = await as('boss', 'POST', '/api/integrations/carsale/cells/apply', { confirm: true, storeId: '381' });
+  assert.strictEqual(go.status, 200, JSON.stringify(go.data));
+  let st;
+  for (let i = 0; i < 100; i++) { st = (await as('boss', 'GET', '/api/integrations/carsale/cells/status')).data; if (!st.job.running) break; await new Promise((r) => setTimeout(r, 50)); }
+  assert.ok(!st.job.error, st.job.error);
+  const s = st.job.result.stats;
+  assert.strictEqual(s.racksCreated, 5);
+  assert.strictEqual(s.itemsUpdated, 3);
+  assert.strictEqual(s.verified, 3);
+  assert.strictEqual(s.errors, 0, JSON.stringify(st.job.result.errors));
+  const d2 = M.directory.find((d) => d.code_ === 'P0002-C');
+  assert.strictEqual(d2.name_rack, 'A-16-01-01', 'место хранения — первая закреплённая ячейка');
+  const e = M.edits.find((x) => x.Code_ === 'P0002-C');
+  assert.strictEqual(e.Name_, src.name_, 'остальные поля карточки не теряются');
+  assert.strictEqual(e.PRICE, Number(src.price));
+  assert.strictEqual(e.ms_quant, src.ms_quant);
+  assert.ok(M.rows.filter((r) => r.code_ === 'P0002-C' && [8, 62].includes(r.id_status)).every((r) => r.cell_name === 'A-16-01-01'), 'остатки перенесены');
+  assert.ok(M.rows.filter((r) => r.code_ === 'P0002-C' && r.id_status === 82).every((r) => r.cell_name !== 'A-16-01-01'), 'у дилера не трогаем');
+  assert.ok(db.prepare("SELECT 1 FROM audit WHERE action = 'Ячейки записаны в Carsale'").get());
+  // повторный план — делать нечего
+  const p2 = (await as('boss', 'GET', '/api/integrations/carsale/cells/plan?store=381')).data;
+  assert.strictEqual(p2.racks.create + p2.items.update + p2.batches.move, 0);
+  await as('boss', 'DELETE', '/api/receipts/doc/CELL-1');
 });
