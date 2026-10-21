@@ -122,6 +122,49 @@ test('перемещение между ячейками одной зоны', a
   assert.strictEqual(db.prepare('SELECT sku FROM cell WHERE addr = ?').pluck().get(to), 'BD-40206');
 });
 
+test('скан ТСД: этикетка ячейки, артикул, заводской штрихкод; закреплённая ячейка вне зоны', async () => {
+  const c = db.prepare("SELECT addr, sku FROM cell WHERE sku = 'BD-40206' LIMIT 1").get();
+  const cell = await call('GET', `/api/scan?code=${encodeURIComponent(c.addr.toLowerCase().replace(/-/g, ' '))}`);
+  assert.strictEqual(cell.status, 200);
+  assert.strictEqual(cell.data.kind, 'cell');
+  assert.strictEqual(cell.data.addr, c.addr);
+  assert.strictEqual(cell.data.cell.sku, 'BD-40206');
+  const art = await call('GET', '/api/scan?code=bd40206');
+  assert.strictEqual(art.data.kind, 'sku');
+  assert.strictEqual(art.data.sku.art, 'BD-40206');
+  assert.ok(art.data.sku.cells.some((x) => x.addr === c.addr));
+  db.prepare("UPDATE sku SET barcode = '4607012345678' WHERE art = 'BD-40206'").run();
+  const bc = await call('GET', '/api/scan?code=4607012345678');
+  assert.strictEqual(bc.data.sku.art, 'BD-40206');
+  assert.strictEqual((await call('GET', '/api/scan?code=NOPE-0000')).data.code, 'UNKNOWN_CODE');
+  assert.strictEqual((await call('GET', '/api/scan?code=')).status, 400);
+  // ячейка закреплена за товаром из другой зоны — класть туда можно
+  const zone = db.prepare("SELECT zone FROM sku WHERE art = 'FO-15208'").pluck().get();
+  const other = db.prepare('SELECT addr FROM cell WHERE sku IS NULL AND blocked = 0 AND substr(addr, 1, 1) <> ? LIMIT 1').pluck().get(zone);
+  db.prepare('UPDATE sku SET home = ? WHERE art = ?').run(JSON.stringify([other]), 'FO-15208');
+  const put = await call('POST', `/api/cells/${other}/put`, { art: 'FO-15208', qty: 1 }, { 'X-Op-Id': 'scan-home-1' });
+  assert.strictEqual(put.status, 200, JSON.stringify(put.data));
+  const home = await call('GET', `/api/scan?code=${other}`);
+  assert.deepStrictEqual(home.data.home.map((x) => x.art), ['FO-15208']);
+  // адрес в другом написании: строчные буквы и без ведущих нулей
+  const loose = other.toLowerCase().split('-').map((p) => (/^\d+$/.test(p) ? String(Number(p)) : p)).join('-');
+  const put2 = await call('POST', `/api/cells/${loose}/put`, { art: 'FO-15208', qty: 1 });
+  assert.strictEqual(put2.data.cell.addr, other);
+  const rack = await call('GET', `/api/scan?code=${encodeURIComponent(c.addr.split('-').slice(0, -2).join('-'))}`);
+  assert.strictEqual(rack.data.kind, 'rack');
+  assert.ok(rack.data.cells.some((x) => x.addr === c.addr && x.sku === 'BD-40206'));
+  // словарь для работы без сети
+  const dict = await call('GET', '/api/tsd/dict');
+  assert.ok(dict.data.addrs.includes(other));
+  assert.ok(dict.data.skus.some((r) => r[0] === 'BD-40206' && r[4] === '4607012345678'));
+  // привязка заводского штрихкода с ТСД
+  const link = await call('POST', '/api/skus/FO-15208/barcode', { barcode: '2000000000017' });
+  assert.strictEqual(link.status, 200, JSON.stringify(link.data));
+  assert.strictEqual((await call('GET', '/api/scan?code=2000000000017')).data.sku.art, 'FO-15208');
+  assert.strictEqual((await call('POST', '/api/skus/FO-15208/barcode', { barcode: '4607012345678' })).data.code, 'BARCODE_TAKEN');
+  assert.strictEqual((await call('POST', '/api/skus/FO-15208/barcode', { barcode: other })).data.code, 'BARCODE_IS_CELL');
+});
+
 test('сброс демо доступен только администратору', async () => {
   assert.strictEqual((await call('POST', '/api/demo/reset')).status, 403);
   await call('POST', '/api/logout');

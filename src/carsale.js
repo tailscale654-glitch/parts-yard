@@ -214,9 +214,9 @@ function createCarsaleSync(db, L, cfg, { clientFactory } = {}) {
     const stats = { directory: data.directory.length, stockRows: data.stock.length, added: 0, updated: 0, zoneKept: 0, withStock: 0, units: 0, reserved: 0, warnings: [...data.warnings] };
     const existing = new Map(db.prepare('SELECT * FROM sku').all().map((s) => [s.art, s]));
     const placed = new Map(db.prepare('SELECT sku, COUNT(*) AS n FROM cell WHERE sku IS NOT NULL GROUP BY sku').all().map((r) => [r.sku, r.n]));
-    const ins = db.prepare(`INSERT INTO sku(art, name, zone, per, min_qty, price, unit, brand, source, ext_id, ext_type, ext_location, ext_active, ext_synced)
-      VALUES (@art, @name, @zone, @per, 0, @price, @unit, @brand, 'carsale', @ext_id, @ext_type, @ext_location, @ext_active, @stamp)`);
-    const upd = db.prepare(`UPDATE sku SET name = @name, zone = @zone, price = @price, unit = @unit, brand = @brand, source = 'carsale',
+    const ins = db.prepare(`INSERT INTO sku(art, name, zone, per, min_qty, price, barcode, unit, brand, source, ext_id, ext_type, ext_location, ext_active, ext_synced)
+      VALUES (@art, @name, @zone, @per, 0, @price, @barcode, @unit, @brand, 'carsale', @ext_id, @ext_type, @ext_location, @ext_active, @stamp)`);
+    const upd = db.prepare(`UPDATE sku SET name = @name, zone = @zone, price = @price, barcode = COALESCE(@barcode, barcode), unit = @unit, brand = @brand, source = 'carsale',
       ext_id = @ext_id, ext_type = @ext_type, ext_location = @ext_location, ext_active = @ext_active, ext_synced = @stamp WHERE art = @art`);
 
     const seen = new Map();
@@ -228,7 +228,7 @@ function createCarsaleSync(db, L, cfg, { clientFactory } = {}) {
     for (const d of data.directory) {
       take(clean(d.code_, 60), {
         name: clean(d.name_) || clean(d.code_, 60), type: clean(d.name_type, 30), rack: clean(d.name_rack, 80),
-        price: num(d.price) || null, unit: clean(d.ms_quant, 20) || null, brand: clean(d.name_mark, 60) || null,
+        price: num(d.PRICE ?? d.price) || null, barcode: clean(d.barcode, 60) || null, unit: clean(d.ms_quant, 20) || null, brand: clean(d.name_mark, 60) || null,
         ext_id: String(d.id ?? ''), active: d.state === 'A' || d.state == null ? 1 : 0,
       });
     }
@@ -259,7 +259,7 @@ function createCarsaleSync(db, L, cfg, { clientFactory } = {}) {
         if (old && old.zone !== zone && ((placed.get(art) || 0) > 0 || old.zone_manual)) { zone = old.zone; stats.zoneKept++; }
         const a = agg.get(art);
         const location = a && a.cells.size ? [...a.cells].slice(0, 5).join(', ') : d.rack;
-        const row = { art, name: d.name, zone, per: S.defaultPer, price: d.price, unit: d.unit, brand: d.brand,
+        const row = { art, name: d.name, zone, per: S.defaultPer, price: d.price, barcode: d.barcode || null, unit: d.unit, brand: d.brand,
           ext_id: d.ext_id || null, ext_type: d.type || null, ext_location: location || null, ext_active: d.active, stamp };
         if (old) { upd.run(row); stats.updated++; } else { ins.run(row); stats.added++; }
       }

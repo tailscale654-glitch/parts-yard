@@ -3,32 +3,33 @@
 // xlsx — это zip с XML внутри; нужны только sharedStrings и первый лист. Формулы берутся по сохранённому значению.
 const zlib = require('zlib');
 
-function unzip(buf) {
+function unzip(buf, what = 'файл Excel (.xlsx)') {
   // конец центрального каталога
   let eocd = -1;
   for (let i = buf.length - 22; i >= Math.max(0, buf.length - 66000); i--) if (buf.readUInt32LE(i) === 0x06054b50) { eocd = i; break; }
-  if (eocd < 0) throw new Error('Это не файл Excel (.xlsx)');
+  if (eocd < 0) throw new Error(`Это не ${what}`);
   const count = buf.readUInt16LE(eocd + 10);
   let p = buf.readUInt32LE(eocd + 16);
   const files = new Map();
   for (let n = 0; n < count; n++) {
-    if (buf.readUInt32LE(p) !== 0x02014b50) throw new Error('Файл Excel повреждён');
+    if (buf.readUInt32LE(p) !== 0x02014b50) throw new Error(`Повреждён ${what}`);
     const method = buf.readUInt16LE(p + 10), csize = buf.readUInt32LE(p + 20);
     const nlen = buf.readUInt16LE(p + 28), xlen = buf.readUInt16LE(p + 30), clen = buf.readUInt16LE(p + 32), off = buf.readUInt32LE(p + 42);
     const name = buf.toString('utf8', p + 46, p + 46 + nlen);
     files.set(name, { method, csize, off });
     p += 46 + nlen + xlen + clen;
   }
-  const read = (name) => {
+  const readBuf = (name) => {
     const f = files.get(name);
     if (!f) return null;
     const lh = f.off, start = lh + 30 + buf.readUInt16LE(lh + 26) + buf.readUInt16LE(lh + 28);
     const data = buf.subarray(start, start + f.csize);
-    if (f.method === 0) return data.toString('utf8');
-    if (f.method === 8) return zlib.inflateRawSync(data, { maxOutputLength: 64 * 1024 * 1024 }).toString('utf8');
-    throw new Error('Неподдерживаемое сжатие в файле Excel');
+    if (f.method === 0) return data;
+    if (f.method === 8) return zlib.inflateRawSync(data, { maxOutputLength: 64 * 1024 * 1024 });
+    throw new Error(`Неподдерживаемое сжатие: ${what}`);
   };
-  return { read, names: [...files.keys()] };
+  const read = (name) => { const b = readBuf(name); return b == null ? null : b.toString('utf8'); };
+  return { read, readBuf, names: [...files.keys()] };
 }
 
 const ENT = { amp: '&', lt: '<', gt: '>', quot: '"', apos: "'" };
@@ -74,4 +75,4 @@ function readXlsx(buf) {
   return rows;
 }
 
-module.exports = { readXlsx };
+module.exports = { readXlsx, unzip };

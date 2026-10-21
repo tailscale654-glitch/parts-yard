@@ -10,6 +10,7 @@ export class ApiError extends Error {
 export async function api(path, opt = {}) {
   const init = { method: opt.method || 'GET', headers: { ...(opt.headers || {}) }, cache: 'no-store' };
   if (opt.body !== undefined) { init.headers['Content-Type'] = 'application/json'; init.body = JSON.stringify(opt.body); }
+  if (opt.raw !== undefined) { init.headers['Content-Type'] = opt.type || 'application/octet-stream'; init.body = opt.raw; }
   if (opt.opId) init.headers['X-Op-Id'] = newOpId();
   let r;
   try { r = await fetch(path, init); } catch (e) { throw new ApiError('Нет связи с сервером', 0, null); }
@@ -63,6 +64,7 @@ const P = {
   refresh: '<path d="M21 12a9 9 0 1 1-3-6.7L21 8"/><path d="M21 3v5h-5"/>',
   link: '<path d="M10 13a5 5 0 0 0 7.5.5l3-3a5 5 0 0 0-7-7l-1.7 1.7"/><path d="M14 11a5 5 0 0 0-7.5-.5l-3 3a5 5 0 0 0 7 7l1.7-1.7"/>',
   copy: '<rect x="9" y="9" width="12" height="12" rx="2"/><path d="M5 15V5a2 2 0 0 1 2-2h10"/>',
+  barcode: '<path d="M4 5v14M7 5v14M10 5v14M14 5v14M16 5v14M20 5v14"/>',
   search: '<circle cx="11" cy="11" r="7"/><path d="m20 20-3.6-3.6"/>',
   store: '<path d="M3 9.5 4.6 4h14.8L21 9.5"/><path d="M4 9.5V20h16V9.5"/><path d="M3 9.5h18"/><path d="M9.5 20v-5.5h5V20"/>',
   more: '<circle cx="5" cy="12" r="1.4"/><circle cx="12" cy="12" r="1.4"/><circle cx="19" cy="12" r="1.4"/>',

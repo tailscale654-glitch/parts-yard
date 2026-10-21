@@ -553,3 +553,16 @@ table.t tbody tr:hover td{background:color-mix(in srgb,var(--accent) 6%,transpar
 @media (hover:none){.search-trigger kbd{display:none}}
 .field .hint.err{color:var(--bad)}
 .dsync > span > svg{width:16px;height:16px;stroke:var(--accent);fill:none;stroke-width:2;stroke-linecap:round;vertical-align:-3px;margin-right:6px}
+
+/* ---------- этикетки ячеек ---------- */
+.lbl-prev{display:flex;flex-wrap:wrap;gap:12px;margin-top:14px}
+.lbl{width:var(--w);height:var(--h);box-sizing:border-box;padding:2.2mm 3mm 1.8mm;display:flex;flex-direction:column;justify-content:space-between;overflow:hidden;background:#fff;color:#000;
+  font-family:-apple-system,"SF Pro Text",system-ui,"Segoe UI",Roboto,sans-serif}
+.lbl-prev .lbl{border:1px solid var(--line);border-radius:6px;box-shadow:0 1px 2px rgba(0,0,0,.06)}
+.lbl .a{font:700 var(--af)/1 "SF Mono",ui-monospace,Menlo,Consolas,monospace;letter-spacing:-.02em;white-space:nowrap;text-align:center}
+.lbl .bc{display:block;width:100%;height:var(--bh)}
+.lbl .s{font-size:2.6mm;line-height:1.15;text-align:center;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.lbl .s.mono{font-family:"SF Mono",ui-monospace,Menlo,Consolas,monospace;font-weight:600}
+#lblprint{display:none}
+#lblprint.roll .lbl{break-after:page;page-break-after:always}
+.lbl-sheet{width:210mm;height:296mm;display:grid;grid-template-columns:repeat(var(--cols),var(--w));grid-auto-rows:var(--h);justify-content:center;align-content:start;padding-top:.5mm;break-after:page;page-break-after:always}

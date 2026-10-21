@@ -115,7 +115,9 @@ function createWarehouse(db, L, opts = {}) {
     const c = needCell(addr);
     const s = needSku(art);
     if (c.blocked) throw new WmsError(409, 'CELL_BLOCKED', `Ячейка ${addr} заблокирована`);
-    if (L.meta.get(addr).zone !== s.zone) {
+    let home = [];
+    try { home = JSON.parse(s.home || '[]'); } catch (e) { home = []; }
+    if (L.meta.get(addr).zone !== s.zone && !home.includes(addr)) {
       throw new WmsError(409, 'WRONG_ZONE', `${art} хранится в зоне ${s.zone}, а ${addr} — в зоне ${L.meta.get(addr).zone}`);
     }
     if (c.sku && c.sku !== art) throw new WmsError(409, 'CELL_OCCUPIED', `В ячейке ${addr} уже лежит ${c.sku}`);

@@ -3,7 +3,7 @@
 import { S, can, api, esc, icon, h, toast, fail, modal, bus } from './core.js';
 import { addrIndex, addrKey } from './addr.js';
 
-const V = '?v=10';
+const V = '?v=11';
 const ROUTES = [
   { grp: 'Обзор' },
   { path: 'dashboard', title: 'Дашборды', short: 'Обзор', icon: 'dash', perm: ['dashboard.view'], mod: './views/dashboard.js' },
@@ -12,6 +12,7 @@ const ROUTES = [
   { path: 'receipts', title: 'Поставки', short: 'Поставки', icon: 'inbound', perm: ['stock.view'], mod: './views/receipts.js', badge: 'receipts' },
   { path: 'orders', title: 'Заказы дилеров', short: 'Заказы', icon: 'outbound', perm: ['stock.view'], mod: './views/orders.js', badge: 'orders' },
   { path: 'dealers', title: 'Дилеры', short: 'Дилеры', icon: 'store', perm: ['stock.view'], mod: './views/dealers.js' },
+  { path: 'labels', title: 'Этикетки ячеек', short: 'Этикетки', icon: 'barcode', perm: ['stock.view'], mod: './views/labels.js' },
   { path: 'catalog', title: 'Каталог', short: 'Каталог', icon: 'box', perm: ['stock.view'], mod: './views/catalog.js' },
   { grp: 'Контроль' },
   { path: 'inventory', title: 'Инвентаризация', short: 'Пересчёт', icon: 'check', perm: ['stock.view', 'inventory.count'], mod: './views/inventory.js', badge: 'inventory' },

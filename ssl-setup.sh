@@ -121,7 +121,7 @@ server {
     ssl_session_cache shared:pyard:10m;
     ssl_session_timeout 1d;
 
-    client_max_body_size 10m;   # загрузка логотипа и фото здания
+    client_max_body_size 64m;   # логотип, фото здания, APK для ТСД
 
     location / {
         proxy_pass http://127.0.0.1:$PORT;

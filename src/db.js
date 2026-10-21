@@ -171,6 +171,10 @@ const MIGRATIONS = [
   (db) => {
     db.exec('ALTER TABLE sku ADD COLUMN home TEXT');
   },
+  // 7 — штрихкод запчасти (из Carsale): ТСД находит артикул по скану заводской этикетки
+  (db) => {
+    db.exec('ALTER TABLE sku ADD COLUMN barcode TEXT; CREATE INDEX sku_barcode ON sku(barcode);');
+  },
 ];
 
 function now() {

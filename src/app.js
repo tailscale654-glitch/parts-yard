@@ -102,7 +102,9 @@ function createApp({ db, L, cfg }) {
 
   // ---------- склад ----------
   const u = (req) => req.user.username;
-  const addr = (req) => req.params.addr.toUpperCase();
+  // адрес в любом написании (A-8-1-2, a 08 01 02) → как на складе
+  const cellAddr = (x) => { const a = L.find(String(x || '')); return a && L.meta.has(a) ? a : String(x || '').toUpperCase(); };
+  const addr = (req) => cellAddr(req.params.addr);
   api.get('/state', need('stock.view'), h((req) => ({ ...W.state(), user: { username: req.user.username, role: req.user.role } })));
   api.get('/cells/:addr', need('stock.view'), h((req) => {
     const a = addr(req);
@@ -116,6 +118,45 @@ function createApp({ db, L, cfg }) {
     s.cells = db.prepare('SELECT addr, qty, blocked FROM cell WHERE sku = ? ORDER BY addr').all(s.art);
     return s;
   }));
+  // ТСД: что отсканировали — этикетку ячейки, артикул или заводской штрихкод запчасти
+  const skuBy = {
+    art: db.prepare('SELECT * FROM sku WHERE art = ? COLLATE NOCASE'),
+    barcode: db.prepare('SELECT * FROM sku WHERE barcode = ?'),
+    all: db.prepare('SELECT art FROM sku'),
+  };
+  const squash = (x) => String(x || '').toUpperCase().replace(/[\s\-_./]/g, '');
+  const skuCard = (s) => {
+    let home = [];
+    try { home = JSON.parse(s.home || '[]'); } catch (e) { home = []; }
+    return { art: s.art, name: s.name, zone: s.zone, per: s.per, barcode: s.barcode || null, home,
+      cells: db.prepare('SELECT addr, qty, blocked FROM cell WHERE sku = ? ORDER BY addr').all(s.art), ext_qty: s.ext_qty ?? null };
+  };
+  api.get('/scan', need('stock.view'), h((req) => {
+    const code = String(req.query.code || '').trim().slice(0, 80);
+    if (!code) throw new WmsError(400, 'NO_CODE', 'Пустой скан');
+    const addrHit = L.find(code.replace(/[\\/]/g, '-'));
+    if (addrHit && L.meta.has(addrHit)) {
+      const c = db.prepare('SELECT c.addr, c.sku, c.qty, c.blocked, s.name, s.per FROM cell c LEFT JOIN sku s ON s.art = c.sku WHERE c.addr = ?').get(addrHit);
+      const homeOf = db.prepare("SELECT art, name FROM sku WHERE home LIKE ?").all(`%"${addrHit}"%`);
+      return { kind: 'cell', addr: addrHit, cell: { ...c, ...L.meta.get(addrHit) }, home: homeOf };
+    }
+    if (addrHit) {
+      // этикетка стеллажа: что лежит на всех его ячейках
+      const cells = db.prepare(`SELECT c.addr, c.sku, c.qty, c.blocked, s.name FROM cell c LEFT JOIN sku s ON s.art = c.sku
+        WHERE c.addr LIKE ? ORDER BY c.addr`).all(`${addrHit}-%`).filter((c) => L.meta.has(c.addr) && L.meta.get(c.addr).rack === addrHit);
+      if (cells.length) return { kind: 'rack', rack: addrHit, zone: L.meta.get(cells[0].addr).zone, cells };
+    }
+    let s = skuBy.art.get(code) || skuBy.barcode.get(code);
+    if (!s) { const k = squash(code); const a = k && skuBy.all.pluck().all().find((x) => squash(x) === k); if (a) s = skuBy.art.get(a); }
+    if (s) return { kind: 'sku', sku: skuCard(s) };
+    throw new WmsError(404, 'UNKNOWN_CODE', `Не знаю такой код: ${code}`);
+  }));
+  // ТСД: словарь для работы без сети — все адреса и артикулы со штрихкодами
+  api.get('/tsd/dict', need('stock.view'), h(() => ({
+    rev: W.rev(), layoutRev: layoutRev(),
+    addrs: [...L.meta.keys()],
+    skus: db.prepare('SELECT art, name, zone, per, barcode FROM sku ORDER BY art').raw().all(),
+  })));
   api.get('/plan/putaway/:id(\\d+)', need('stock.view'), h((req) => W.planPutaway(+req.params.id)));
   api.get('/plan/pick/:id(\\d+)', need('stock.view'), h((req) => W.planPick(+req.params.id)));
 
@@ -123,7 +164,7 @@ function createApp({ db, L, cfg }) {
   api.post(`/cells/:addr(${ADDR})/pick`, need('stock.pick'), mutation((req) => W.pick({ addr: addr(req), art: req.body.art, qty: req.body.qty, orderId: req.body.orderId ?? null }, u(req))));
   api.post(`/cells/:addr(${ADDR})/count`, need('stock.count'), mutation((req) => W.count({ addr: addr(req), qty: req.body.qty }, u(req))));
   api.post(`/cells/:addr(${ADDR})/block`, need('stock.block'), mutation((req) => W.setBlocked({ addr: addr(req), blocked: !!req.body.blocked }, u(req))));
-  api.post('/move', need('stock.move'), mutation((req) => W.move({ from: String(req.body.from || '').toUpperCase(), to: String(req.body.to || '').toUpperCase(), qty: req.body.qty }, u(req))));
+  api.post('/move', need('stock.move'), mutation((req) => W.move({ from: cellAddr(req.body.from), to: cellAddr(req.body.to), qty: req.body.qty }, u(req))));
   api.post('/receipts/:id(\\d+)/putaway', need('stock.put'), mutation((req) => W.confirmPutaway(+req.params.id, u(req))));
   api.post('/orders/:id(\\d+)/pick', need('stock.pick'), mutation((req) => W.confirmPick(+req.params.id, u(req))));
   api.post('/orders/:id(\\d+)/close', need('docs.orders'), mutation((req) => W.closeOrder(+req.params.id, u(req))));
@@ -133,6 +174,7 @@ function createApp({ db, L, cfg }) {
   require('./api-admin')(api, ctx);
   require('./api-carsale')(api, ctx);
   require('./api-dealers')(api, ctx);
+  require('./api-tsd')(app, api, ctx);
 
   api.post('/demo/reset', need('admin.settings'), (req, res) => {
     if (!cfg.demo) return res.status(403).json({ error: 'Сброс доступен только в демо-режиме (WMS_DEMO=1)', code: 'NOT_DEMO' });

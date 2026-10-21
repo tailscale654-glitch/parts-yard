@@ -27,6 +27,17 @@ module.exports = function docsApi(api, { db, L, INV, need, h, mutation, WmsError
     if (!Number.isInteger(min) || min < 0) throw new WmsError(400, 'BAD_MIN', `${where}минимум — целое число от 0`);
     return { art, name, zone, per, min_qty: min };
   }
+  // заводской штрихкод запчасти: печатные ASCII, не этикетка ячейки, не занят другим артикулом
+  function checkBarcode(v, art) {
+    const bc = text(v, 80);
+    if (!bc) return null;
+    if (bc.length > 60 || !/^[\x21-\x7e]+$/.test(bc)) throw new WmsError(400, 'BAD_BARCODE', 'Штрихкод — латиница и цифры без пробелов, до 60 символов');
+    const a = L.find(bc);
+    if (a && L.meta.has(a)) throw new WmsError(400, 'BARCODE_IS_CELL', `${bc} — это этикетка ячейки, а не товара`);
+    const other = db.prepare('SELECT art FROM sku WHERE barcode = ? AND art <> ?').pluck().get(bc, art);
+    if (other) throw new WmsError(409, 'BARCODE_TAKEN', `Штрихкод ${bc} уже привязан к ${other}`);
+    return bc;
+  }
   const upsertSku = db.prepare(`INSERT INTO sku(art, name, zone, per, min_qty) VALUES (@art, @name, @zone, @per, @min_qty)
     ON CONFLICT(art) DO UPDATE SET name = excluded.name, zone = excluded.zone, per = excluded.per, min_qty = excluded.min_qty`);
 
@@ -34,7 +45,7 @@ module.exports = function docsApi(api, { db, L, INV, need, h, mutation, WmsError
     const q = text(req.query.q, 60).toLowerCase(), zone = text(req.query.zone, 3);
     let rows = db.prepare(`SELECT s.*, COALESCE(SUM(c.qty), 0) AS qty, COUNT(c.addr) AS cells
       FROM sku s LEFT JOIN cell c ON c.sku = s.art GROUP BY s.art ORDER BY s.zone, s.art`).all();
-    if (q) rows = rows.filter((r) => r.art.toLowerCase().includes(q) || r.name.toLowerCase().includes(q));
+    if (q) rows = rows.filter((r) => r.art.toLowerCase().includes(q) || r.name.toLowerCase().includes(q) || (r.barcode && r.barcode.toLowerCase().includes(q)));
     if (zone) rows = rows.filter((r) => r.zone === zone);
     return { items: rows, zones: L.zones.map((z) => ({ id: z.id, title: z.title, sub: z.sub })) };
   }));
@@ -57,9 +68,11 @@ module.exports = function docsApi(api, { db, L, INV, need, h, mutation, WmsError
         if (!home.includes(a)) home.push(a);
       }
     }
+    const barcode = req.body.barcode !== undefined ? checkBarcode(req.body.barcode, r.art) : undefined;
     db.transaction(() => {
       upsertSku.run(r);
       if (home) db.prepare('UPDATE sku SET home = ? WHERE art = ?').run(home.length ? JSON.stringify(home) : null, r.art);
+      if (barcode !== undefined) db.prepare('UPDATE sku SET barcode = ? WHERE art = ?').run(barcode, r.art);
       if (exists && exists.zone !== r.zone) db.prepare('UPDATE sku SET zone_manual = 1 WHERE art = ?').run(r.art);
       audit(db, req.user.username, exists ? 'Артикул изменён' : 'Артикул добавлен', r);
       bump();
@@ -88,6 +101,21 @@ module.exports = function docsApi(api, { db, L, INV, need, h, mutation, WmsError
     if (used) throw new WmsError(409, 'SKU_USED', `${art} лежит на складе или есть в документах — удалить нельзя. Можно поставить минимум 0 и не использовать.`);
     db.transaction(() => { db.prepare('DELETE FROM sku WHERE art = ?').run(art); audit(db, req.user.username, 'Артикул удалён', { art }); bump(); })();
     return { ok: true };
+  }));
+
+  // ТСД: кладовщик сканирует заводскую этикетку и привязывает её к артикулу
+  api.post('/skus/:art/barcode', need('catalog.manage', 'stock.put'), h((req) => {
+    const s = db.prepare('SELECT art, barcode FROM sku WHERE art = ?').get(req.params.art);
+    if (!s) throw new WmsError(404, 'NO_SKU', `Артикула ${req.params.art} нет в каталоге`);
+    const bc = checkBarcode(req.body && req.body.barcode, s.art);
+    if (!bc) throw new WmsError(400, 'NO_BARCODE', 'Пустой штрихкод');
+    if (s.barcode === bc) return { ok: true, art: s.art, barcode: bc };
+    db.transaction(() => {
+      db.prepare('UPDATE sku SET barcode = ? WHERE art = ?').run(bc, s.art);
+      audit(db, req.user.username, 'Штрихкод привязан', { art: s.art, barcode: bc, was: s.barcode || null });
+      bump();
+    })();
+    return { ok: true, art: s.art, barcode: bc, was: s.barcode || null };
   }));
 
   // ---------- поставки ----------

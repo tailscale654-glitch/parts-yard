@@ -27,8 +27,9 @@ function pickImage() {
 }
 
 export async function mount(root) {
-  const r = await api('/api/admin/settings');
+  const [r, tsd] = await Promise.all([api('/api/admin/settings'), api('/api/tsd/app').catch(() => ({ versionCode: 0 }))]);
   const v = r.values, s = r.system;
+  const appUrl = `${location.origin}/app`;
   root.innerHTML = `${pageHead('Настройки', 'Название склада, частота обновления экранов, резервная копия базы.')}
     <div class="grid2" style="align-items:start">
       <div class="card"><div class="ch"><h2>Основное</h2></div><div class="cb" style="display:flex;flex-direction:column;gap:12px">
@@ -55,7 +56,32 @@ export async function mount(root) {
         <p class="note" style="margin:0">Копия делается на ходу, без остановки работы. Для восстановления остановите службу и замените файл базы.</p>
         ${S.demo ? '<div class="infobox">Демо-режим: можно вернуть демонстрационные данные. Для реальной работы поставьте <span class="mono">WMS_DEMO=0</span> в <span class="mono">/etc/default/parts-yard</span>.<div class="row" style="margin-top:8px"><button class="btn danger sm" id="demo">Сбросить демо-данные</button></div></div>' : ''}
       </div></div>
+      <div class="card"><div class="ch"><h2>Приложение для ТСД</h2></div><div class="cb" style="display:flex;flex-direction:column;gap:12px">
+        ${tsd.versionCode ? `<dl class="kv"><dt>Версия</dt><dd class="mono">${esc(tsd.versionName)} (сборка ${tsd.versionCode})</dd><dt>Файл</dt><dd>${(tsd.size / 1048576).toFixed(1)} МБ · загружен ${esc(String(tsd.uploaded).slice(0, 16).replace('T', ' '))}${tsd.by ? ` · ${esc(tsd.by)}` : ''}</dd></dl>`
+          : '<p class="note" style="margin:0">Ещё не загружено.</p>'}
+        <div class="row"><button class="btn pri sm" id="apkUp">${icon('upload')}Загрузить APK</button>${tsd.versionCode ? `<a class="btn sm" href="/app/sklad-jac.apk">${icon('download')}Скачать</a>` : ''}</div>
+        <p class="note" style="margin:0">Готовый APK — в GitHub: репозиторий <span class="mono">parts-yard-android</span> → Releases. После загрузки ТСД сами предложат обновиться. Первая установка: на ТСД откройте <a href="${esc(appUrl)}" target="_blank" rel="noopener" class="mono">${esc(appUrl)}</a>.</p>
+      </div></div>
     </div>`;
+  root.querySelector('#apkUp').onclick = () => {
+    const inp = document.createElement('input');
+    inp.type = 'file'; inp.accept = '.apk,application/vnd.android.package-archive'; inp.hidden = true;
+    inp.onchange = async () => {
+      const f = inp.files[0]; inp.remove();
+      if (!f) return;
+      try {
+        const up = (force) => api(`/api/admin/tsd-app${force ? '?force=1' : ''}`, { method: 'POST', raw: f, type: 'application/vnd.android.package-archive' });
+        let res;
+        try { res = await up(false); } catch (e) {
+          if (e.code !== 'OLDER_VERSION' || !(await confirmBox(e.message, 'Всё равно загрузить', true))) throw e;
+          res = await up(true);
+        }
+        toast(`Загружена версия ${res.versionName}`);
+        setTimeout(() => mount(root), 200);
+      } catch (e) { fail(e.status === 413 ? new Error('Файл слишком большой для nginx: перезапустите ssl-setup.sh из новой версии (лимит 64 МБ)') : e); }
+    };
+    document.body.appendChild(inp); inp.click();
+  };
   root.querySelector('#save').onclick = async () => {
     try {
       await api('/api/admin/settings', { method: 'PUT', body: { warehouse_name: root.querySelector('#sname').value, warehouse_subtitle: root.querySelector('#ssub').value,

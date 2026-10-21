@@ -19,7 +19,7 @@ export async function mount(root, { params = {} } = {}) {
   function draw() {
     const hasHome = items.some((r) => homeOf(r).length);
     const cs = items.some((r) => r.source === 'carsale');
-    const list = items.filter((r) => (!q || r.art.toLowerCase().includes(q) || r.name.toLowerCase().includes(q) || String(r.home || '').toLowerCase().includes(q)) && (!zone || r.zone === zone) && (!onlyLow || status(r) !== 'в норме'));
+    const list = items.filter((r) => (!q || r.art.toLowerCase().includes(q) || r.name.toLowerCase().includes(q) || String(r.home || '').toLowerCase().includes(q) || String(r.barcode || '').toLowerCase().includes(q)) && (!zone || r.zone === zone) && (!onlyLow || status(r) !== 'в норме'));
     table(root.querySelector('#tbl'), {
       columns: [{ key: 'art', label: 'Артикул', mono: true }, { key: 'name', label: 'Наименование' }, { key: 'zone', label: 'Зона' },
         ...(hasHome ? [{ key: 'homeTxt', label: 'Закреплено', mono: true }] : []), { key: 'per', label: 'В ячейку', align: 'r' }, { key: 'min_qty', label: 'Минимум', align: 'r' }, { key: 'qty', label: 'В ячейках', align: 'r' },
@@ -44,6 +44,7 @@ export async function mount(root, { params = {} } = {}) {
         <label class="field"><span>Минимальный остаток, шт</span><input class="in" id="cmin" type="number" min="0" value="${r ? r.min_qty : 0}" ${m ? '' : 'readonly'}><span class="hint">Ниже — попадёт в «Требует внимания». 0 — не следить</span></label>
       </div>
       <label class="field"><span>Закреплённые ячейки</span><input class="in mono" id="chome" value="${esc(r && r.home ? (() => { try { return JSON.parse(r.home).join(', '); } catch (e) { return ''; } })() : '')}" placeholder="A-16-01-01, A-16-01-02" ${m ? '' : 'readonly'}><span class="hint">Сюда артикул размещается в первую очередь; первая ячейка уходит в Carsale как место хранения</span></label>
+      <label class="field"><span>Штрихкод производителя</span><input class="in mono" id="cbar" maxlength="60" value="${esc(r && r.barcode ? r.barcode : '')}" placeholder="4607012345678" ${m ? '' : 'readonly'}><span class="hint">По нему ТСД находит артикул при скане заводской этикетки. Кладовщик может привязать его прямо с ТСД</span></label>
       ${r ? `<div class="infobox">В ячейках <b>${r.qty}</b> шт (${r.cells} яч.). <a href="#/map?sku=${encodeURIComponent(r.art)}">Показать на карте</a></div>` : ''}
       ${r && r.source === 'carsale' ? `<div class="infobox"><b>Из Carsale</b> · на складе ${fmt(r.ext_qty || 0)} шт${r.ext_reserved ? `, бронь ${fmt(r.ext_reserved)}` : ''} · тип ${esc(r.ext_type || '—')}${r.price ? ` · цена ${fmt(r.price)}` : ''}${r.unit ? ` · ${esc(r.unit)}` : ''}${r.brand ? ` · ${esc(r.brand)}` : ''}${r.ext_location ? `<br>Место в Carsale: <span class="mono">${esc(r.ext_location)}</span>` : ''}${r.ext_active ? '' : '<br><span class="err">В Carsale неактивен</span>'}
         <div class="note" style="margin-top:4px">Название и цена обновляются при синхронизации. Зону и вместимость можно менять здесь — синхронизация их не перезапишет.</div></div>` : ''}</div>`);
@@ -55,7 +56,7 @@ export async function mount(root, { params = {} } = {}) {
     acts.push({ label: m ? 'Отмена' : 'Закрыть' });
     if (m) acts.push({ label: 'Сохранить', kind: 'pri', onClick: async ({ el }) => {
       await api('/api/catalog', { method: 'POST', body: { isNew, art: el.querySelector('#cart').value.trim(), name: el.querySelector('#cname').value, zone: el.querySelector('#czone').value,
-        per: Number(el.querySelector('#cper').value), min_qty: Number(el.querySelector('#cmin').value || 0), home: el.querySelector('#chome').value } });
+        per: Number(el.querySelector('#cper').value), min_qty: Number(el.querySelector('#cmin').value || 0), home: el.querySelector('#chome').value, barcode: el.querySelector('#cbar').value } });
       toast('Сохранено'); bus.dispatchEvent(new Event('changed')); load();
     } });
     const md = modal({ title: isNew ? 'Новый артикул' : r.art, sub: r ? esc(r.name) : '', body, actions: acts });

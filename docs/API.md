@@ -38,6 +38,11 @@ JSON поверх HTTP и cookie-сессия.
 | GET | `/api/skus/{art}` | артикул и все ячейки, где он лежит |
 | GET | `/api/plan/putaway/{receiptId}` | предложенные адреса для строки поставки, в порядке обхода |
 | GET | `/api/plan/pick/{orderId}` | лист отбора по остатку заказа, в порядке обхода, и недостача |
+| GET | `/api/scan?code=` | что отсканировали: `{"kind":"cell","addr","cell","home"}`, `{"kind":"rack","rack","cells"}` или `{"kind":"sku","sku":{"art","name","zone","per","barcode","home","cells"}}`; 404 `UNKNOWN_CODE` |
+| GET | `/api/tsd/dict` | словарь для работы ТСД без сети: `addrs` (все адреса) и `skus` — `[art, name, zone, per, barcode]` |
+| GET | `/api/tsd/app` | последняя версия приложения для ТСД: `versionCode`, `versionName`, `size`, `url` (0 — не загружено) |
+
+Адрес в путях и в `/api/move` принимается в любом написании: `a-8-1-2` и `A 08 01 02` — это `A-08-01-02`.
 
 В `state.cells` хранятся только непустые или заблокированные ячейки, в виде
 `"A-01-02-3-1": ["FO-15208", 12, 0]` (артикул, количество, блокировка).
@@ -54,6 +59,10 @@ JSON поверх HTTP и cookie-сессия.
 | POST | `/api/receipts/{id}/putaway` | провести весь план размещения (веб) |
 | POST | `/api/orders/{id}/pick` | провести весь лист отбора и закрыть заказ (веб) |
 | POST | `/api/orders/{id}/close` | закрыть заказ с недостачей |
+| POST | `/api/skus/{art}/barcode` | `{"barcode"}` — привязать заводской штрихкод (права `stock.put` или `catalog.manage`); `BARCODE_TAKEN`, `BARCODE_IS_CELL` |
+| POST | `/api/admin/tsd-app` | тело — сам APK (`Content-Type: application/vnd.android.package-archive`), права `admin.settings`. Пакет должен быть `uz.jacmotors.sklad`; старая версия — только с `?force=1` |
+
+Без входа доступны `GET /app` (страница установки приложения) и `GET /app/sklad-jac.apk`.
 
 Если добавить `?state=1`, ответ будет содержать полный снимок `state`.
 
