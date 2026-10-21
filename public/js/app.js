@@ -3,7 +3,7 @@
 import { S, can, api, esc, icon, h, toast, fail, modal, bus } from './core.js';
 import { addrIndex, addrKey } from './addr.js';
 
-const V = '?v=9';
+const V = '?v=10';
 const ROUTES = [
   { grp: 'Обзор' },
   { path: 'dashboard', title: 'Дашборды', short: 'Обзор', icon: 'dash', perm: ['dashboard.view'], mod: './views/dashboard.js' },

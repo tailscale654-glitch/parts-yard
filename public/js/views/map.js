@@ -3,6 +3,7 @@ import { api, esc, pad, can, toast, fail, bus, pageHead, fmtTs } from '../core.j
 import { zoneRacks, addrIndex, addrKey, example } from '../addr.js';
 
 const CX = 470, RH = 16, RS = 34, RECV = { x: 220, y: 448 }, SHIP = { x: 716, y: 448 };
+let MAP_H = 580;
 
 export async function mount(root, { params }) {
   let ZONES = [], SKU = {}, SKUS = [], RACKS = [], RACK = {}, META = {}, S = null, IDX = new Map();
@@ -59,8 +60,12 @@ export async function mount(root, { params }) {
   }
 
   function drawMap() {
-    let h = '<rect class="floor" x="10" y="10" width="920" height="560" rx="6"/>';
-    h += `<line class="corr" x1="${CX}" y1="40" x2="${CX}" y2="470"/><line class="corr" x1="30" y1="485" x2="910" y2="485"/>`;
+    // высота схемы — по зонам, без пустого поля внизу
+    MAP_H = Math.max(220, ...ZONES.map((z) => z.y + (z.rows - 1) * RS + RH + 36));
+    svg.setAttribute('viewBox', `0 0 940 ${MAP_H}`);
+    RECV.y = SHIP.y = MAP_H - 16;
+    let h = `<rect class="floor" x="10" y="10" width="920" height="${MAP_H - 20}" rx="6"/>`;
+    h += `<line class="corr" x1="${CX}" y1="40" x2="${CX}" y2="${MAP_H - 24}"/>`;
     for (const z of ZONES) {
       const w = z.racks * (z.rw + 2) - 2, hgt = (z.rows - 1) * RS + RH + 18;
       h += `<rect class="zoneframe" x="${z.x - 12}" y="${z.y - 8}" width="${w + 24}" height="${hgt + 8}" rx="4"/>`;
@@ -69,9 +74,6 @@ export async function mount(root, { params }) {
     }
     for (const rk of RACKS) h += `<rect class="rk" data-rack="${rk.id}" x="${rk.x}" y="${rk.y}" width="${rk.w}" height="${RH}" rx="2"><title>${rk.id}</title></rect>`;
     h += '<g id="blk"></g>';
-    h += '<rect class="dock" x="40" y="462" width="360" height="46" rx="4"/><text class="docklbl" x="52" y="489">Приёмка · буфер размещения</text>';
-    h += '<rect class="dock" x="540" y="462" width="352" height="46" rx="4"/><text class="docklbl" x="552" y="489">Отгрузка · комплектация заказов</text>';
-    for (let i = 0; i < 6; i++) { const x = 70 + i * 140; h += `<rect class="gate" x="${x}" y="532" width="60" height="10" rx="2"/><text class="gatelbl" x="${x + 30}" y="556" text-anchor="middle">ВОРОТА ${i + 1}</text>`; }
     h += '<g id="ov"></g>';
     svg.innerHTML = h;
   }
@@ -154,7 +156,7 @@ export async function mount(root, { params }) {
     let h = `<div class="sec"><h3>Поставки к размещению</h3>${S.receipts.length ? `<div class="list">${S.receipts.map((x) =>
       `<button class="li${U.asn === x.id ? ' on' : ''}" data-asn="${x.id}" ${x.done ? 'disabled' : ''}><span>${esc(skuName(x.art))}</span><span class="pill ${x.done ? 'ok' : 'wait'}">${x.done ? 'размещено' : 'ожидает'}</span><span class="sub mono">${esc(x.doc)}${x.gate ? ' · ворота ' + esc(x.gate) : ''} · ${esc(x.art)} · ${x.placed ? `${x.qty - x.placed} из ${x.qty}` : x.qty} шт${SKU[x.art] ? ' · зона ' + esc(SKU[x.art].zone) : ''}</span></button>`).join('')}</div>` : '<p class="hint">Поставок нет. Создайте в разделе «Поставки».</p>'}</div>`;
     const p = U.plan && U.plan.kind === 'in' && U.plan.id === U.asn ? U.plan.data : null;
-    if (!U.asn || !S.receipts.some((x) => x.id === U.asn && !x.done)) return h + '<p class="hint">Выберите строку поставки: система подберёт адреса по правилам зоны, сначала дозаполняя ячейки с тем же артикулом, затем свободные ближе к воротам.</p>';
+    if (!U.asn || !S.receipts.some((x) => x.id === U.asn && !x.done)) return h + '<p class="hint">Выберите строку поставки: система подберёт адреса по правилам зоны, сначала дозаполняя ячейки с тем же артикулом, затем свободные ближе к проезду.</p>';
     if (!p) return h + '<p class="hint">Подбираю адреса…</p>';
     h += `<div class="sec"><h3>Предложенные адреса · маршрут от приёмки</h3><table class="steps"><thead><tr><th>№</th><th>Адрес</th><th>Ячейка</th><th class="r">Кол-во</th></tr></thead><tbody>${p.plan.map((x, i) => `<tr><td><span class="no">${i + 1}</span></td><td><button class="chip" data-goto="${x.addr}">${x.addr}</button></td><td class="note">${x.fresh ? 'свободная' : 'дозаполнение'}</td><td class="r mono">${x.qty}</td></tr>`).join('')}</tbody></table>
       ${p.left ? `<p class="err" style="font-size:12.5px">Не хватает места на ${p.left} шт. Остаток останется в буфере приёмки.</p>` : ''}

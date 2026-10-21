@@ -15,7 +15,7 @@ export async function mount(root) {
     <div class="card"><div class="ch"><h2>Зоны</h2><div class="row"><span class="note" id="src"></span><button class="btn sm" id="addz">${icon('plus')}Зона</button></div></div>
       <div class="tw"><table class="t zone-table" id="zt"></table></div></div>
     <div class="grid2" style="align-items:start">
-      <div class="card"><div class="ch"><h2>Схема</h2><span class="note">Поле 940 × 580; приёмка и отгрузка внизу (y ≥ 460)</span></div><div class="cb"><svg class="map" id="prev" viewBox="0 0 940 580" role="img" aria-label="Предпросмотр схемы"></svg></div></div>
+      <div class="card"><div class="ch"><h2>Схема</h2><span class="note">Поле 940 × 580</span></div><div class="cb"><svg class="map" id="prev" viewBox="0 0 940 580" role="img" aria-label="Предпросмотр схемы"></svg></div></div>
       <div class="card"><div class="ch"><h2>Что изменится</h2></div><div class="cb" id="impact"><p class="note">Нажмите «Проверить», чтобы увидеть, сколько ячеек добавится и удалится.</p></div></div>
     </div>`;
 
@@ -33,7 +33,7 @@ export async function mount(root) {
       }).join('')}</tbody>`;
   }
   function preview() {
-    let s = '<rect class="floor" x="10" y="10" width="920" height="560" rx="6"/><rect class="dock" x="40" y="462" width="360" height="46" rx="4"/><rect class="dock" x="540" y="462" width="352" height="46" rx="4"/>';
+    let s = '<rect class="floor" x="10" y="10" width="920" height="560" rx="6"/>';
     for (const z of zones) {
       const n = (k) => Number(z[k]) || 0;
       if (!n('rows') || !n('racks')) continue;
