@@ -10,6 +10,7 @@ const FORMATS = {
   a4: { name: 'Лист A4: 24 наклейки 70×37 мм', w: 70, h: 37, page: 'A4', af: 7, bh: 12, cols: 3, rows: 8 },
 };
 const MAX = 5000;
+const plural = (n, one, few, many) => { const a = n % 100, b = n % 10; return a > 10 && a < 15 ? many : b === 1 ? one : b > 1 && b < 5 ? few : many; };
 const ZOOMS = { 1: 'Крупно', 0.75: 'Средне', 0.5: 'Мелко' };
 
 // «01-05, 08» → множество номеров стеллажей; пусто — все
@@ -129,7 +130,7 @@ export async function mount(root) {
     const sheets = f.cols ? Math.ceil(list.length / (f.cols * f.rows)) : 0;
     const groups = new Set(list.map((it) => it.grp)).size;
     $('#cnt').innerHTML = list.length
-      ? `<b>${fmt(list.length)}</b> этикеток${$('#kind').value === 'cell' ? ` · ${fmt(groups)} стеллажей` : ''}${sheets ? ` · ${fmt(sheets)} лист(ов) A4` : ''}${list.length > MAX ? ` · <span class="err">для печати выберите не больше ${fmt(MAX)}</span>` : ''}`
+      ? `<b>${fmt(list.length)}</b> ${plural(list.length, 'этикетка', 'этикетки', 'этикеток')}${$('#kind').value === 'cell' ? ` · ${fmt(groups)} ${plural(groups, 'стеллаж', 'стеллажа', 'стеллажей')}` : ''}${sheets ? ` · ${fmt(sheets)} ${plural(sheets, 'лист', 'листа', 'листов')} A4` : ''}${list.length > MAX ? ` · <span class="err">для печати выберите не больше ${fmt(MAX)}</span>` : ''}`
       : 'Нет ячеек под выбранные условия';
     render(f);
     try { localStorage.setItem('pyard.labels', JSON.stringify({ kind: $('#kind').value, zone: $('#zone').value, fmt: $('#fmt').value, used: $('#used').checked, home: $('#home').checked, zoom: $('#zoom').value })); } catch (e) { /* без памяти */ }

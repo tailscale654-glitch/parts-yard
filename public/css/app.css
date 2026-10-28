@@ -555,7 +555,12 @@ table.t tbody tr:hover td{background:color-mix(in srgb,var(--accent) 6%,transpar
 .dsync > span > svg{width:16px;height:16px;stroke:var(--accent);fill:none;stroke-width:2;stroke-linecap:round;vertical-align:-3px;margin-right:6px}
 
 /* ---------- этикетки ячеек ---------- */
-.lbl-prev{display:flex;flex-wrap:wrap;gap:12px;margin-top:14px}
+.lbl-prev{display:flex;flex-wrap:wrap;gap:12px;margin-top:14px;align-items:flex-start}
+/* заголовок стеллажа: компенсируем масштаб просмотра, чтобы текст оставался читаемым */
+.lbl-grp{flex-basis:100%;display:flex;align-items:baseline;gap:8px;margin-top:calc(8px / var(--z,1));padding:calc(6px / var(--z,1)) calc(12px / var(--z,1));
+  border-radius:calc(8px / var(--z,1));background:color-mix(in srgb,var(--surface) 88%,transparent);font-weight:650;font-size:calc(15px / var(--z,1));color:var(--ink)}
+.lbl-grp:first-child{margin-top:0}
+.lbl-grp span{font-weight:500;font-size:.85em;color:var(--muted)}
 .lbl{width:var(--w);height:var(--h);box-sizing:border-box;padding:2.2mm 3mm 1.8mm;display:flex;flex-direction:column;justify-content:space-between;overflow:hidden;background:#fff;color:#000;
   font-family:-apple-system,"SF Pro Text",system-ui,"Segoe UI",Roboto,sans-serif}
 .lbl-prev .lbl{border:1px solid var(--line);border-radius:6px;box-shadow:0 1px 2px rgba(0,0,0,.06)}
